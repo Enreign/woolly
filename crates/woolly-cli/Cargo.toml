@@ -1,0 +1,64 @@
+[package]
+name = "woolly-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Command-line interface for Woolly LLM inference engine"
+keywords = ["llm", "inference", "cli", "gguf", "mcp"]
+categories = ["command-line-utilities", "science"]
+
+[[bin]]
+name = "woolly"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+woolly-core = { path = "../woolly-core" }
+woolly-gguf = { path = "../woolly-gguf" }
+woolly-mcp = { path = "../woolly-mcp" }
+woolly-bench = { path = "../woolly-bench" }
+woolly-tensor = { path = "../woolly-tensor" }
+
+# External dependencies
+clap = { version = "4.5", features = ["derive", "env", "color"] }
+tokio = { workspace = true, features = ["full"] }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "chrono"] }
+
+# Config and path handling
+config = "0.14"
+dirs = "5.0"
+shellexpand = "3.1"
+toml = "0.8"
+
+# Terminal UI and formatting
+crossterm = "0.28"
+indicatif = "0.17"
+console = "0.15"
+colored = "2.1"
+tabled = "0.16"
+
+# Async utilities
+futures = "0.3"
+async-trait = { workspace = true }
+
+# File handling
+memmap2 = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+tempfile = "3.12"
+assert_cmd = "2.0"
+predicates = "3.1"
+
+[features]
+default = ["bundled"]
+bundled = []

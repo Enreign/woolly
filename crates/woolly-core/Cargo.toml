@@ -1,0 +1,47 @@
+[package]
+name = "woolly-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Core inference engine for Woolly LLM"
+
+[features]
+default = []
+mcp = ["dep:woolly-mcp"]
+
+[dependencies]
+# Internal dependencies
+woolly-tensor = { path = "../woolly-tensor" }
+woolly-gguf = { path = "../woolly-gguf" }
+woolly-mcp = { path = "../woolly-mcp", optional = true }
+
+# External dependencies from workspace
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+
+# Additional core-specific dependencies
+dashmap = "6.0"
+futures = "0.3"
+parking_lot = "0.12"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+num_cpus = { workspace = true }
+toml = "0.8"
+num-traits = "0.2"
+regex = "1.10"
+rand = "0.8"
+half = "2.4"
+bytemuck = "1.19"
+lru = "0.12"
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+tracing-subscriber = { workspace = true }

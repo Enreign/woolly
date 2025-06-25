@@ -1,0 +1,53 @@
+[package]
+name = "woolly-mlx"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "MLX GPU backend for Woolly tensor operations on Apple Silicon"
+
+[features]
+default = ["mlx"]
+mlx = []
+
+[dependencies]
+# Workspace dependencies
+woolly-tensor = { path = "../woolly-tensor" }
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde = { workspace = true, features = ["derive"] }
+num-traits.workspace = true
+half.workspace = true
+bytemuck.workspace = true
+
+# MLX bindings - for now we'll use libc for FFI until mlx-rs is available
+libc = "0.2"
+
+# Platform detection
+[target.'cfg(target_os = "macos")'.dependencies]
+# MLX is only available on macOS
+# Note: In a real implementation, you would either:
+# 1. Use mlx-rs crate when available
+# 2. Or use bindgen to generate bindings from MLX C++ headers
+# 3. Or use cc crate to compile MLX C++ code
+# For this implementation, we'll create a mock interface that shows the structure
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+# On non-macOS platforms, MLX dependencies are not needed
+
+[build-dependencies]
+# We would need cc and bindgen for real MLX integration
+# cc = "1.0"
+# bindgen = "0.65"
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+
+[[bench]]
+name = "mlx_operations"
+harness = false
+required-features = ["mlx"]

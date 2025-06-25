@@ -1,0 +1,41 @@
+[package]
+name = "woolly-bench"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+woolly-core = { path = "../woolly-core" }
+woolly-tensor = { path = "../woolly-tensor" }
+woolly-gguf = { path = "../woolly-gguf" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+clap = { version = "4.4", features = ["derive"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+tempfile = "3.10"
+
+[[bench]]
+name = "tensor_ops"
+harness = false
+
+[[bench]]
+name = "model_loading"
+harness = false
+
+[[bench]]
+name = "comparison"
+harness = false
+
+[[bin]]
+name = "woolly-bench"
+path = "src/main.rs"

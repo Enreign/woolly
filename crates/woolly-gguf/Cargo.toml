@@ -1,0 +1,21 @@
+[package]
+name = "woolly-gguf"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Zero-copy, memory-mapped GGUF format loader for Rust"
+
+[dependencies]
+memmap2 = { workspace = true }
+thiserror = { workspace = true }
+byteorder = { workspace = true }
+half = { workspace = true }
+bytemuck = { workspace = true }
+lru = "0.12"
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.8"
