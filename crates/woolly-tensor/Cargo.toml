@@ -17,9 +17,9 @@ thiserror = { workspace = true }
 
 # Additional tensor-specific dependencies
 half = { version = "2.4", optional = true }
-rayon = { version = "1.10", optional = true }
+rayon = { workspace = true, optional = true }
 bytemuck = "1.16"
-lru = "0.12"
+lru = "0.14"
 tracing = { workspace = true }
 
 [dev-dependencies]

@@ -56,9 +56,9 @@ struct PooledAllocation {
     /// Number of times this allocation has been reused
     reuse_count: u32,
     /// Device where allocation resides
-    device: Device,
+    _device: Device,
     /// Data type stored in allocation
-    dtype: DType,
+    _dtype: DType,
 }
 
 /// Memory pool statistics
@@ -245,7 +245,7 @@ impl MemoryPool {
     }
     
     /// Allocate new buffer
-    fn allocate_new_buffer(&self, size: usize, dtype: DType, device: Device) -> TensorResult<Vec<u8>> {
+    fn allocate_new_buffer(&self, size: usize, _dtype: DType, device: Device) -> TensorResult<Vec<u8>> {
         match device {
             Device::Cpu => {
                 let mut buffer = Vec::with_capacity(size);
@@ -306,8 +306,8 @@ impl MemoryPool {
             size,
             returned_at: Instant::now(),
             reuse_count: 0,
-            device,
-            dtype,
+            _device: device,
+            _dtype: dtype,
         };
         
         // Add to appropriate pool
@@ -358,7 +358,7 @@ impl MemoryPool {
         
         for pool in pools.values_mut() {
             // Remove expired allocations
-            let original_len = pool.len();
+            let _original_len = pool.len();
             pool.retain(|allocation| {
                 let expired = now.duration_since(allocation.returned_at) > self.config.ttl;
                 if expired {

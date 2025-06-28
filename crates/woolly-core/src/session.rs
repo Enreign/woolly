@@ -192,13 +192,12 @@ impl InferenceSession {
     /// Run inference on input tokens with memory management
     pub async fn infer(&self, tokens: &[u32]) -> Result<Vec<f32>> {
         if !self.is_active() {
-            return Err(CoreError::Generation {
-                code: "SESSION_INACTIVE",
-                message: "Session is not active".to_string(),
-                context: "Inference request".to_string(),
-                suggestion: "Create a new session or reactivate this one".to_string(),
-                session_id: Some(self.id.clone()),
-            });
+            return Err(CoreError::generation(
+                "SESSION_INACTIVE",
+                "Session is not active",
+                "Inference request",
+                "Create a new session or reactivate this one",
+            ));
         }
 
         // Update last accessed time
@@ -206,13 +205,12 @@ impl InferenceSession {
 
         // Validate input
         if tokens.is_empty() {
-            return Err(CoreError::Generation {
-                code: "EMPTY_INPUT",
-                message: "Empty input tokens".to_string(),
-                context: "Token validation".to_string(),
-                suggestion: "Provide non-empty token sequence".to_string(),
-                session_id: Some(self.id.clone()),
-            });
+            return Err(CoreError::generation(
+                "EMPTY_INPUT",
+                "Empty input tokens",
+                "Token validation",
+                "Provide non-empty token sequence",
+            ));
         }
 
         // Check memory pressure before processing
@@ -225,16 +223,9 @@ impl InferenceSession {
         let past_kv_cache = self.get_kv_cache_for_inference().await;
 
         // Execute the forward pass
-        let model_output = self.model.forward(tokens, past_kv_cache.as_ref()).await?;
+        let model_output = self.model.forward(tokens)?;
 
-        // Update KV cache if using caching
-        if let Some(ref kv_cache) = self.kv_cache {
-            if let Some(ref new_kv_data) = model_output.past_kv_cache {
-                // Extract KV data and store in cache
-                // This is a simplified interface - in reality we'd need proper type handling
-                self.update_kv_cache(new_kv_data, tokens).await?;
-            }
-        }
+        // Note: KV cache update would happen here if the Model trait supported it
 
         // Update token history with size limit
         self.append_to_token_history(tokens).await?;
@@ -262,17 +253,18 @@ impl InferenceSession {
                self.id, tokens.len());
 
         // Return the actual logits from the model
-        Ok(model_output.logits)
+        Ok(model_output)
     }
 
     /// Process a batch of sequences
     pub async fn infer_batch(&self, batch: Vec<Vec<u32>>) -> Result<Vec<Vec<f32>>> {
         if batch.len() > self.config.max_batch_size {
-            return Err(CoreError::Generation(format!(
-                "Batch size {} exceeds maximum {}",
-                batch.len(),
-                self.config.max_batch_size
-            )));
+            return Err(CoreError::generation(
+                "BATCH_SIZE_EXCEEDED",
+                format!("Batch size {} exceeds maximum {}", batch.len(), self.config.max_batch_size),
+                "Processing batch for text generation",
+                "Reduce the batch size or increase the maximum batch size configuration"
+            ));
         }
 
         // Process each sequence in the batch
@@ -357,15 +349,15 @@ impl InferenceSession {
             // Check if still over budget after cleanup
             let current_after = self.current_memory.load(Ordering::Relaxed);
             if current_after > budget {
-                return Err(CoreError::Resource {
-                    code: "MEMORY_BUDGET_EXCEEDED",
-                    message: format!("Session memory budget exceeded: {} bytes", current_after),
-                    context: format!("Session '{}' memory management", self.id),
-                    suggestion: "Reduce session size or increase memory budget".to_string(),
-                    resource_type: "memory".to_string(),
-                    required: Some(current_after),
-                    available: Some(budget),
-                });
+                return Err(CoreError::resource(
+                    "MEMORY_BUDGET_EXCEEDED",
+                    format!("Session memory budget exceeded: {} bytes", current_after),
+                    format!("Session '{}' memory management", self.id),
+                    "Reduce session size or increase memory budget",
+                    "memory",
+                    Some(current_after),
+                    Some(budget),
+                ));
             }
         }
         
@@ -428,7 +420,7 @@ impl InferenceSession {
     }
     
     /// Update KV cache with new data
-    async fn update_kv_cache(&self, new_kv_data: &dyn std::any::Any, tokens: &[u32]) -> Result<()> {
+    async fn update_kv_cache(&self, _new_kv_data: &(dyn std::any::Any + Send + Sync), _tokens: &[u32]) -> Result<()> {
         if let Some(ref kv_cache) = self.kv_cache {
             // This is a placeholder - in reality we'd need to:
             // 1. Extract the KV tensors from new_kv_data
@@ -436,7 +428,7 @@ impl InferenceSession {
             // 3. Store them in the cache
             
             // For now, just log the operation
-            trace!("Updated KV cache for session '{}' with {} tokens", self.id, tokens.len());
+            trace!("Updated KV cache for session '{}' with {} tokens", self.id, _tokens.len());
         }
         Ok(())
     }
@@ -487,8 +479,8 @@ impl InferenceSession {
         let cleanup_start = Instant::now();
         
         // Clean up KV cache
-        if let Some(ref kv_cache) = self.kv_cache {
-            kv_cache.cleanup_expired();
+        if let Some(ref _kv_cache) = self.kv_cache {
+            // TODO: Implement cleanup_expired method for OptimizedKVCache
         }
         
         // Trim token history if it's grown too large
@@ -565,8 +557,8 @@ impl InferenceSession {
         }
         
         // Optimize KV cache
-        if let Some(ref kv_cache) = self.kv_cache {
-            kv_cache.optimize_cache()?;
+        if let Some(ref _kv_cache) = self.kv_cache {
+            // TODO: Implement optimize_cache method for OptimizedKVCache
         }
         
         // Update memory usage

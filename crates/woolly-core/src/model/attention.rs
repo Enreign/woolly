@@ -4,6 +4,7 @@ use crate::{CoreError, Result};
 use crate::tensor_utils::{SimpleTensor, tensor_from_slice, matmul, add_tensors, softmax};
 use woolly_tensor::Shape;
 use std::f32;
+use rayon::prelude::*;
 
 /// Multi-head attention configuration
 #[derive(Debug, Clone)]
@@ -30,8 +31,11 @@ impl AttentionConfig {
     /// Create a new attention configuration
     pub fn new(hidden_size: usize, num_heads: usize, max_seq_len: usize) -> Result<Self> {
         if hidden_size % num_heads != 0 {
-            return Err(CoreError::InvalidInput(
-                "Hidden size must be divisible by number of heads".to_string(),
+            return Err(CoreError::invalid_input(
+                "INVALID_HEAD_CONFIG",
+                "Hidden size must be divisible by number of heads",
+                "attention configuration",
+                "Ensure hidden_size is divisible by num_heads"
             ));
         }
 
@@ -50,8 +54,11 @@ impl AttentionConfig {
     /// Enable grouped query attention with specified number of KV heads
     pub fn with_gqa(mut self, num_kv_heads: usize) -> Result<Self> {
         if self.num_heads % num_kv_heads != 0 {
-            return Err(CoreError::InvalidInput(
-                "Number of heads must be divisible by number of KV heads".to_string(),
+            return Err(CoreError::invalid_input(
+                "INVALID_GQA_CONFIG",
+                "Number of heads must be divisible by number of KV heads",
+                "grouped query attention configuration",
+                "Ensure num_heads is divisible by num_kv_heads"
             ));
         }
         self.num_kv_heads = Some(num_kv_heads);
@@ -241,9 +248,10 @@ impl MultiHeadAttention {
         let mut attention_weights = vec![0.0; seq_len * seq_len * num_heads];
         let mut output = vec![0.0; seq_len * num_heads * head_dim];
 
-        // Compute attention scores for each head
-        for h in 0..num_heads {
+        // Compute attention scores for each head in parallel
+        let score_chunks: Vec<_> = (0..num_heads).into_par_iter().map(|h| {
             let kv_h = h / kv_repeat; // Map to KV head
+            let mut head_scores = vec![0.0f32; seq_len * seq_len];
 
             // Compute Q @ K^T for this head
             for i in 0..seq_len {
@@ -255,11 +263,16 @@ impl MultiHeadAttention {
                         score += query[q_idx] * key[k_idx];
                     }
                     score *= scale;
-
-                    let score_idx = h * seq_len * seq_len + i * seq_len + j;
-                    attention_scores[score_idx] = score;
+                    head_scores[i * seq_len + j] = score;
                 }
             }
+            (h, head_scores)
+        }).collect();
+
+        // Copy results back to attention_scores
+        for (h, head_scores) in score_chunks {
+            let offset = h * seq_len * seq_len;
+            attention_scores[offset..offset + seq_len * seq_len].copy_from_slice(&head_scores);
         }
 
         // Apply attention mask if provided
@@ -290,33 +303,44 @@ impl MultiHeadAttention {
             }
         }
 
-        // Softmax over last dimension
-        for h in 0..num_heads {
+        // Parallel softmax computation over last dimension
+        let weight_chunks: Vec<_> = (0..num_heads).into_par_iter().map(|h| {
+            let mut head_weights = vec![0.0f32; seq_len * seq_len];
+            
             for i in 0..seq_len {
                 let row_start = h * seq_len * seq_len + i * seq_len;
                 let row_end = row_start + seq_len;
-                let row = &mut attention_scores[row_start..row_end];
+                let row = &attention_scores[row_start..row_end];
 
                 // Find max for numerical stability
                 let max_score = row.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
 
                 // Compute exp and sum
                 let mut sum = 0.0;
-                for score in row.iter_mut() {
-                    *score = (*score - max_score).exp();
-                    sum += *score;
+                let mut exp_values = vec![0.0f32; seq_len];
+                for (j, &score) in row.iter().enumerate() {
+                    exp_values[j] = (score - max_score).exp();
+                    sum += exp_values[j];
                 }
 
                 // Normalize
-                for (idx, score) in row.iter().enumerate() {
-                    attention_weights[row_start + idx] = score / sum;
+                for (j, exp_val) in exp_values.iter().enumerate() {
+                    head_weights[i * seq_len + j] = exp_val / sum;
                 }
             }
+            (h, head_weights)
+        }).collect();
+
+        // Copy results back to attention_weights
+        for (h, head_weights) in weight_chunks {
+            let offset = h * seq_len * seq_len;
+            attention_weights[offset..offset + seq_len * seq_len].copy_from_slice(&head_weights);
         }
 
-        // Apply attention weights to values
-        for h in 0..num_heads {
+        // Apply attention weights to values in parallel
+        let output_chunks: Vec<_> = (0..num_heads).into_par_iter().map(|h| {
             let kv_h = h / kv_repeat;
+            let mut head_output = vec![0.0f32; seq_len * head_dim];
 
             for i in 0..seq_len {
                 for d in 0..head_dim {
@@ -326,8 +350,19 @@ impl MultiHeadAttention {
                         let v_idx = (j * num_kv_heads + kv_h) * head_dim + d;
                         sum += attention_weights[weight_idx] * value[v_idx];
                     }
+                    head_output[i * head_dim + d] = sum;
+                }
+            }
+            (h, head_output)
+        }).collect();
+
+        // Copy results back to output
+        for (h, head_output) in output_chunks {
+            for i in 0..seq_len {
+                for d in 0..head_dim {
+                    let src_idx = i * head_dim + d;
                     let out_idx = (i * num_heads + h) * head_dim + d;
-                    output[out_idx] = sum;
+                    output[out_idx] = head_output[src_idx];
                 }
             }
         }
@@ -415,6 +450,91 @@ impl MultiHeadAttention {
 
     /// Load weights for the attention layer
     pub fn load_weights(&mut self, weights: &super::loader::LayerWeights) -> Result<()> {
+        // Validate Q projection dimensions
+        if weights.attn_q_shape.len() != 2 {
+            return Err(CoreError::invalid_input(
+                "INVALID_Q_WEIGHT_DIMS",
+                format!("Q weight must be 2D, got {} dimensions", weights.attn_q_shape.len()),
+                "attention weight loading",
+                "Ensure Q weight is a 2D tensor"
+            ));
+        }
+        let q_expected_shape = [self.config.hidden_size, self.config.hidden_size];
+        if weights.attn_q_shape != q_expected_shape {
+            return Err(CoreError::invalid_input(
+                "Q_WEIGHT_SHAPE_MISMATCH",
+                format!("Q weight shape mismatch: expected {:?}, got {:?}", 
+                        q_expected_shape, weights.attn_q_shape),
+                "attention weight loading",
+                "Check Q weight dimensions"
+            ));
+        }
+        
+        // Validate K/V projection dimensions for GQA
+        let kv_hidden_size = if let Some(num_kv_heads) = self.config.num_kv_heads {
+            num_kv_heads * self.config.head_dim
+        } else {
+            self.config.hidden_size
+        };
+        
+        if weights.attn_k_shape.len() != 2 {
+            return Err(CoreError::invalid_input(
+                "INVALID_K_WEIGHT_DIMS",
+                format!("K weight must be 2D, got {} dimensions", weights.attn_k_shape.len()),
+                "attention weight loading",
+                "Ensure K weight is a 2D tensor"
+            ));
+        }
+        let k_expected_shape = [self.config.hidden_size, kv_hidden_size];
+        if weights.attn_k_shape != k_expected_shape {
+            return Err(CoreError::invalid_input(
+                "K_WEIGHT_SHAPE_MISMATCH",
+                format!("K weight shape mismatch: expected {:?}, got {:?}", 
+                        k_expected_shape, weights.attn_k_shape),
+                "attention weight loading",
+                "Check K weight dimensions for GQA"
+            ));
+        }
+        
+        if weights.attn_v_shape.len() != 2 {
+            return Err(CoreError::invalid_input(
+                "INVALID_V_WEIGHT_DIMS",
+                format!("V weight must be 2D, got {} dimensions", weights.attn_v_shape.len()),
+                "attention weight loading", 
+                "Ensure V weight is a 2D tensor"
+            ));
+        }
+        let v_expected_shape = [self.config.hidden_size, kv_hidden_size];
+        if weights.attn_v_shape != v_expected_shape {
+            return Err(CoreError::invalid_input(
+                "V_WEIGHT_SHAPE_MISMATCH",
+                format!("V weight shape mismatch: expected {:?}, got {:?}", 
+                        v_expected_shape, weights.attn_v_shape),
+                "attention weight loading",
+                "Check V weight dimensions for GQA"
+            ));
+        }
+        
+        // Validate output projection dimensions
+        if weights.attn_o_shape.len() != 2 {
+            return Err(CoreError::invalid_input(
+                "INVALID_O_WEIGHT_DIMS",
+                format!("Output weight must be 2D, got {} dimensions", weights.attn_o_shape.len()),
+                "attention weight loading",
+                "Ensure output weight is a 2D tensor"
+            ));
+        }
+        let o_expected_shape = [self.config.hidden_size, self.config.hidden_size];
+        if weights.attn_o_shape != o_expected_shape {
+            return Err(CoreError::invalid_input(
+                "O_WEIGHT_SHAPE_MISMATCH",
+                format!("Output weight shape mismatch: expected {:?}, got {:?}", 
+                        o_expected_shape, weights.attn_o_shape),
+                "attention weight loading",
+                "Check output weight dimensions"
+            ));
+        }
+        
         // Load query projection weights
         self.q_proj.load_weights(&weights.attn_q_weight, &weights.attn_q_shape)?;
         
@@ -453,7 +573,7 @@ impl TensorLinear {
 
     fn forward(&self, input: &SimpleTensor) -> Result<SimpleTensor> {
         let weight = self.weight.as_ref()
-            .ok_or_else(|| CoreError::Tensor("Linear layer weights not loaded".to_string()))?;
+            .ok_or_else(|| CoreError::tensor("TENSOR_ERROR", "Linear layer weights not loaded", "", "Check tensor operations"))?;
         
         // Perform matrix multiplication: input @ weight^T
         let output = matmul(input, weight)?;
@@ -468,19 +588,25 @@ impl TensorLinear {
 
     fn load_weights(&mut self, weights: &[f32], shape: &[usize]) -> Result<()> {
         if shape.len() != 2 {
-            return Err(CoreError::InvalidInput(format!(
-                "Expected 2D weight shape, got {}D", shape.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "INVALID_WEIGHT_SHAPE",
+                &format!("Expected 2D weight shape, got {}D", shape.len()),
+                "linear layer weight loading",
+                "Provide 2D weight tensor"
+            ));
         }
 
         let expected_out_features = shape[0];
         let expected_in_features = shape[1];
         
         if expected_out_features != self.out_features || expected_in_features != self.in_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Weight shape mismatch: expected {}x{}, got {}x{}", 
-                self.out_features, self.in_features, expected_out_features, expected_in_features
-            )));
+            return Err(CoreError::invalid_input(
+                "WEIGHT_SHAPE_MISMATCH",
+                &format!("Weight shape mismatch: expected {}x{}, got {}x{}", 
+                    self.out_features, self.in_features, expected_out_features, expected_in_features),
+                "linear layer weight loading",
+                "Check weight tensor dimensions"
+            ));
         }
 
         // Store weights as tensor (transposed for efficient matrix multiplication)
@@ -568,33 +694,45 @@ impl Linear {
     fn load_weights(&mut self, weights: &[f32], shape: &[usize]) -> Result<()> {
         // Validate shape
         if shape.len() != 2 {
-            return Err(CoreError::InvalidInput(format!(
-                "Expected 2D weight shape, got {}D", shape.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "INVALID_WEIGHT_SHAPE",
+                &format!("Expected 2D weight shape, got {}D", shape.len()),
+                "linear layer weight loading",
+                "Provide 2D weight tensor"
+            ));
         }
 
         let expected_out_features = shape[0];
         let expected_in_features = shape[1];
         
         if expected_out_features != self.out_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Output features mismatch: expected {}, got {}", 
-                self.out_features, expected_out_features
-            )));
+            return Err(CoreError::invalid_input(
+                "ATTENTION_OUTPUT_FEATURES_MISMATCH",
+                format!("Output features mismatch: expected {}, got {}", 
+                    self.out_features, expected_out_features),
+                "Attention weight loading",
+                "Ensure weight tensor has the correct output feature dimensions"
+            ));
         }
         
         if expected_in_features != self.in_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Input features mismatch: expected {}, got {}", 
-                self.in_features, expected_in_features
-            )));
+            return Err(CoreError::invalid_input(
+                "ATTENTION_INPUT_FEATURES_MISMATCH",
+                format!("Input features mismatch: expected {}, got {}", 
+                    self.in_features, expected_in_features),
+                "Attention weight loading",
+                "Ensure weight tensor has the correct input feature dimensions"
+            ));
         }
 
         if weights.len() != self.out_features * self.in_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Weight size mismatch: expected {}, got {}", 
-                self.out_features * self.in_features, weights.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "ATTENTION_WEIGHT_SIZE_MISMATCH",
+                format!("Weight size mismatch: expected {}, got {}", 
+                    self.out_features * self.in_features, weights.len()),
+                "Attention weight loading",
+                "Ensure weight tensor size matches out_features * in_features"
+            ));
         }
 
         // Copy weights

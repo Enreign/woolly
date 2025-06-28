@@ -40,10 +40,13 @@ impl TokenEmbedding {
 
         for (i, &token_id) in input_ids.iter().enumerate() {
             if token_id as usize >= self.vocab_size {
-                return Err(CoreError::InvalidInput(format!(
-                    "Token ID {} exceeds vocabulary size {}",
-                    token_id, self.vocab_size
-                )));
+                return Err(CoreError::invalid_input(
+                    "EMBEDDING_TOKEN_ID_OUT_OF_RANGE",
+                    format!("Token ID {} exceeds vocabulary size {}",
+                        token_id, self.vocab_size),
+                    "Embedding forward pass",
+                    "Ensure all token IDs are within the vocabulary size range"
+                ));
             }
 
             let token_id = token_id as usize;
@@ -72,33 +75,45 @@ impl TokenEmbedding {
     pub fn load_weights(&mut self, weights: &[f32], shape: &[usize]) -> Result<()> {
         // Validate shape
         if shape.len() != 2 {
-            return Err(CoreError::InvalidInput(format!(
-                "Expected 2D embedding shape, got {}D", shape.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_INVALID_SHAPE",
+                format!("Expected 2D embedding shape, got {}D", shape.len()),
+                "Embedding weight loading",
+                "Ensure embedding weights have 2D shape [vocab_size, embed_dim]"
+            ));
         }
 
         let expected_vocab_size = shape[0];
         let expected_embed_dim = shape[1];
         
         if expected_vocab_size != self.vocab_size {
-            return Err(CoreError::InvalidInput(format!(
-                "Vocabulary size mismatch: expected {}, got {}", 
-                self.vocab_size, expected_vocab_size
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_VOCAB_SIZE_MISMATCH",
+                format!("Vocabulary size mismatch: expected {}, got {}", 
+                    self.vocab_size, expected_vocab_size),
+                "Embedding weight loading",
+                "Ensure embedding weights match the configured vocabulary size"
+            ));
         }
         
         if expected_embed_dim != self.embed_dim {
-            return Err(CoreError::InvalidInput(format!(
-                "Embedding dimension mismatch: expected {}, got {}", 
-                self.embed_dim, expected_embed_dim
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_DIMENSION_MISMATCH",
+                format!("Embedding dimension mismatch: expected {}, got {}", 
+                    self.embed_dim, expected_embed_dim),
+                "Embedding weight loading",
+                "Ensure embedding weights match the configured embedding dimension"
+            ));
         }
 
         if weights.len() != self.vocab_size * self.embed_dim {
-            return Err(CoreError::InvalidInput(format!(
-                "Weight size mismatch: expected {}, got {}", 
-                self.vocab_size * self.embed_dim, weights.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_WEIGHT_SIZE_MISMATCH",
+                format!("Weight size mismatch: expected {}, got {}", 
+                    self.vocab_size * self.embed_dim, weights.len()),
+                "Embedding weight loading",
+                "Ensure embedding weight tensor size matches vocab_size * embed_dim"
+            ));
         }
 
         // Copy weights
@@ -127,8 +142,11 @@ impl RotaryEmbedding {
     /// Create new rotary embeddings
     pub fn new(max_seq_len: usize, embed_dim: usize, base: f32) -> Result<Self> {
         if embed_dim % 2 != 0 {
-            return Err(CoreError::InvalidInput(
-                "Embedding dimension must be even for RoPE".to_string(),
+            return Err(CoreError::invalid_input(
+                "INVALID_EMBED_DIM",
+                "Embedding dimension must be even for RoPE",
+                "rotary embedding initialization",
+                "Use even embedding dimension"
             ));
         }
 
@@ -170,10 +188,13 @@ impl RotaryEmbedding {
         num_heads: usize,
     ) -> Result<()> {
         if seq_len > self.max_seq_len {
-            return Err(CoreError::InvalidInput(format!(
-                "Sequence length {} exceeds maximum {}",
-                seq_len, self.max_seq_len
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_SEQUENCE_TOO_LONG",
+                format!("Sequence length {} exceeds maximum {}",
+                    seq_len, self.max_seq_len),
+                "Embedding forward pass",
+                "Reduce sequence length or increase max_seq_len in the model configuration"
+            ));
         }
 
         let head_dim = self.embed_dim;
@@ -259,10 +280,13 @@ impl SinusoidalPositionEmbedding {
     /// Get position embeddings for a sequence
     pub fn forward(&self, seq_len: usize) -> Result<Vec<f32>> {
         if seq_len > self.max_seq_len {
-            return Err(CoreError::InvalidInput(format!(
-                "Sequence length {} exceeds maximum {}",
-                seq_len, self.max_seq_len
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_SEQUENCE_TOO_LONG",
+                format!("Sequence length {} exceeds maximum {}",
+                    seq_len, self.max_seq_len),
+                "Embedding forward pass",
+                "Reduce sequence length or increase max_seq_len in the model configuration"
+            ));
         }
 
         let output_size = seq_len * self.embed_dim;
@@ -272,15 +296,21 @@ impl SinusoidalPositionEmbedding {
     /// Add position embeddings to input embeddings
     pub fn add_to_embeddings(&self, embeddings: &mut [f32], seq_len: usize) -> Result<()> {
         if seq_len > self.max_seq_len {
-            return Err(CoreError::InvalidInput(format!(
-                "Sequence length {} exceeds maximum {}",
-                seq_len, self.max_seq_len
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_SEQUENCE_TOO_LONG",
+                format!("Sequence length {} exceeds maximum {}",
+                    seq_len, self.max_seq_len),
+                "Embedding forward pass",
+                "Reduce sequence length or increase max_seq_len in the model configuration"
+            ));
         }
 
         if embeddings.len() != seq_len * self.embed_dim {
-            return Err(CoreError::InvalidInput(
-                "Embedding size mismatch".to_string(),
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_SIZE_MISMATCH",
+                "Embedding size mismatch",
+                "sinusoidal position embedding",
+                "Check embedding dimensions"
             ));
         }
 
@@ -324,12 +354,13 @@ impl LearnedPositionEmbedding {
     /// Get position embeddings for a sequence
     pub fn forward(&self, seq_len: usize, start_pos: usize) -> Result<Vec<f32>> {
         if start_pos + seq_len > self.max_seq_len {
-            return Err(CoreError::InvalidInput(format!(
-                "Position range {}-{} exceeds maximum {}",
-                start_pos,
-                start_pos + seq_len,
-                self.max_seq_len
-            )));
+            return Err(CoreError::invalid_input(
+                "EMBEDDING_POSITION_OUT_OF_RANGE",
+                format!("Position range {}-{} exceeds maximum {}",
+                    start_pos, start_pos + seq_len, self.max_seq_len),
+                "Positional embedding forward pass",
+                "Ensure start_pos + seq_len does not exceed max_seq_len"
+            ));
         }
 
         let start_idx = start_pos * self.embed_dim;

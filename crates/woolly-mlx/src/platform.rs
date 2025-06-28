@@ -148,7 +148,7 @@ fn get_sysctl_string(name: &str) -> Result<String, Box<dyn std::error::Error>> {
             name_cstr.as_ptr(),
             std::ptr::null_mut(),
             &mut size,
-            std::ptr::null(),
+            core::ptr::null_mut(),
             0,
         )
     };
@@ -164,7 +164,7 @@ fn get_sysctl_string(name: &str) -> Result<String, Box<dyn std::error::Error>> {
             name_cstr.as_ptr(),
             buffer.as_mut_ptr() as *mut libc::c_void,
             &mut size,
-            std::ptr::null(),
+            core::ptr::null_mut(),
             0,
         )
     };
@@ -195,7 +195,7 @@ fn get_sysctl_u32(name: &str) -> Result<u32, Box<dyn std::error::Error>> {
             name_cstr.as_ptr(),
             &mut value as *mut u32 as *mut libc::c_void,
             &mut size,
-            std::ptr::null(),
+            core::ptr::null_mut(),
             0,
         )
     };
@@ -221,7 +221,7 @@ fn get_sysctl_u64(name: &str) -> Result<u64, Box<dyn std::error::Error>> {
             name_cstr.as_ptr(),
             &mut value as *mut u64 as *mut libc::c_void,
             &mut size,
-            std::ptr::null(),
+            core::ptr::null_mut(),
             0,
         )
     };

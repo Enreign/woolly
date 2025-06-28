@@ -3,12 +3,14 @@
 //! This crate provides efficient loading of GGUF (GGML Universal File) format models
 //! using memory-mapped I/O for minimal memory overhead and fast access.
 
+pub mod dequantize;
 pub mod error;
 pub mod format;
 pub mod loader;
 pub mod metadata;
 pub mod tensor_info;
 
+pub use dequantize::{dequantize, get_block_size, get_type_size};
 pub use error::{Error, Result};
 pub use format::{GGUFHeader, GGUFMagic, GGUFVersion};
 pub use loader::GGUFLoader;

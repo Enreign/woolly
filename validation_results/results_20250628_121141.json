@@ -1,0 +1,139 @@
+{
+  "metadata": {
+    "timestamp": "2025-06-28T12:05:02.573045",
+    "version": "1.0.0",
+    "config": {
+      "woolly": {
+        "host": "localhost",
+        "port": 8080,
+        "api_key": null,
+        "timeout": 600,
+        "request_timeout": 300,
+        "inference_timeout": 300
+      },
+      "models": [
+        {
+          "name": "llama-3.2-1b",
+          "path": "models/llama-3.2-1b-instruct.gguf",
+          "quantization": "Q4_K_M"
+        }
+      ],
+      "tests": {
+        "inference_speed": {
+          "enabled": true,
+          "prompts": [
+            "Hi"
+          ],
+          "max_tokens": [
+            1,
+            5
+          ],
+          "batch_sizes": [
+            1
+          ]
+        },
+        "resource_utilization": {
+          "enabled": false,
+          "sample_interval": 1.0,
+          "duration": 30
+        },
+        "model_loading": {
+          "enabled": false,
+          "iterations": 1,
+          "measure_memory": true,
+          "timeout": 600
+        },
+        "quality_validation": {
+          "enabled": false,
+          "consistency_runs": 2,
+          "temperature": 0.0,
+          "timeout": 300
+        },
+        "load_testing": {
+          "enabled": false,
+          "concurrent_users": [
+            1
+          ],
+          "duration": 30,
+          "ramp_up_time": 5
+        },
+        "comparative": {
+          "enabled": false,
+          "compare_with": [
+            "llama.cpp",
+            "ollama"
+          ],
+          "metrics": [
+            "throughput",
+            "latency",
+            "memory"
+          ]
+        },
+        "reliability": {
+          "enabled": false,
+          "duration": 300,
+          "check_interval": 30,
+          "memory_leak_detection": true
+        }
+      },
+      "reporting": {
+        "output_dir": "validation_results",
+        "generate_html": true,
+        "generate_pdf": true,
+        "include_graphs": true
+      }
+    }
+  },
+  "tests": {
+    "inference_speed": {
+      "single_token_latency": {
+        "Hi": 163475.44312477112
+      },
+      "sustained_throughput": {
+        "1_tokens": {
+          "tokens_generated": 1,
+          "total_time": 79.27292585372925,
+          "generation_time": 5.245208740234375e-06,
+          "tokens_per_second": 190650.18181818182,
+          "time_to_first_token": 79.27292060852051
+        },
+        "5_tokens": {
+          "tokens_generated": 1,
+          "total_time": 156.56409668922424,
+          "generation_time": 6.9141387939453125e-06,
+          "tokens_per_second": 144631.1724137931,
+          "time_to_first_token": 156.56408977508545
+        }
+      },
+      "timeout_analysis": {
+        "timeout_limit_seconds": 300,
+        "tests_completed_within_timeout": 1,
+        "tests_that_timed_out": 0,
+        "timeout_rate": 0.0,
+        "average_completion_time": 163.47910594940186
+      },
+      "performance_summary": {
+        "average_tokens_per_second": 0.006117126712644904,
+        "max_tokens_per_second": 0.006117126712644904,
+        "min_tokens_per_second": 0.006117126712644904,
+        "successful_tests": 1,
+        "total_tests": 1,
+        "success_rate": 1.0,
+        "meets_target_15tps": false,
+        "target_performance_ratio": 0.00040780844750966025,
+        "speedup_needed": 2452.1316468715668,
+        "usability_rating": "unusable",
+        "performance_classification": "very_slow"
+      },
+      "detailed_measurements": {
+        "Hi": {
+          "status": "completed",
+          "latency_ms": 163475.44312477112,
+          "tokens_per_second": 0.006117126712644904,
+          "elapsed_time": 163.47910594940186,
+          "performance_class": "very_slow"
+        }
+      }
+    }
+  }
+}

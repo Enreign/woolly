@@ -105,7 +105,12 @@ impl BPETokenizer {
     /// Load merge rules from file
     async fn load_merges(&mut self, path: &str) -> Result<()> {
         let file = File::open(path)
-            .map_err(|e| CoreError::Tokenizer(format!("Failed to open merges file: {}", e)))?;
+            .map_err(|e| CoreError::tokenizer(
+                "BPE_MERGES_FILE_OPEN_ERROR",
+                format!("Failed to open merges file: {}", e),
+                "BPE tokenizer merge rules loading",
+                "Check that the merges file path is correct and accessible"
+            ))?;
         
         let reader = BufReader::new(file);
         
@@ -116,7 +121,12 @@ impl BPETokenizer {
             }
             
             let line = line.map_err(|e| {
-                CoreError::Tokenizer(format!("Failed to read merge line: {}", e))
+                CoreError::tokenizer(
+                    "BPE_MERGES_LINE_READ_ERROR",
+                    format!("Failed to read merge line: {}", e),
+                    "BPE tokenizer merge rules parsing",
+                    "Check the merges file format and encoding"
+                )
             })?;
             
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -194,25 +204,23 @@ impl BPETokenizer {
                 self.byte_decoder
                     .get(&c)
                     .copied()
-                    .ok_or_else(|| CoreError::Tokenizer {
-                        code: "TOKENIZER_INVALID_UNICODE",
-                        message: format!("Invalid unicode character: {}", c),
-                        context: "BPE tokenizer decoding".to_string(),
-                        suggestion: "Check input encoding and data integrity".to_string(),
-                        tokenizer_type: Some("BPE".to_string()),
-                    })
+                    .ok_or_else(|| CoreError::tokenizer(
+                        "TOKENIZER_INVALID_UNICODE",
+                        &format!("Invalid unicode character: {}", c),
+                        "BPE tokenizer decoding",
+                        "Check input encoding and data integrity"
+                    ))
             })
             .collect();
         
         let bytes = bytes?;
         String::from_utf8(bytes)
-            .map_err(|e| CoreError::Tokenizer {
-                code: "TOKENIZER_UTF8_DECODE_ERROR",
-                message: format!("Failed to decode bytes to UTF-8: {}", e),
-                context: "BPE tokenizer decoding".to_string(),
-                suggestion: "Ensure input data is valid UTF-8 encoded text".to_string(),
-                tokenizer_type: Some("BPE".to_string()),
-            })
+            .map_err(|e| CoreError::tokenizer(
+                "TOKENIZER_UTF8_DECODE_ERROR",
+                &format!("Failed to decode bytes to UTF-8: {}", e),
+                "BPE tokenizer decoding",
+                "Ensure input data is valid UTF-8 encoded text"
+            ))
     }
 }
 

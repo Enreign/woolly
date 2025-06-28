@@ -3,6 +3,8 @@
 use std::ops::{Add, Div, Mul, Sub};
 use tracing::{debug, trace};
 
+use woolly_tensor::backend::TensorStorage;
+
 use crate::backend::MLXBackend;
 use crate::device::Device;
 use crate::error::{MLXError, Result};
@@ -143,8 +145,10 @@ where
 {
     debug!("Using MLX native element-wise addition");
     
-    // Create output storage
-    let mut output = MLXStorage::zeros(
+    // Create output storage with dummy data (will be overwritten by MLX operation)
+    let dummy_data = vec![unsafe { std::mem::zeroed() }; output_shape.numel()];
+    let mut output = MLXStorage::from_data(
+        dummy_data,
         output_shape.clone(),
         lhs.dtype(),
         device,
@@ -175,7 +179,7 @@ where
 {
     debug!("Using MLX native element-wise subtraction");
     
-    let mut output = MLXStorage::zeros(
+    let mut output = MLXStorage::uninitialized(
         output_shape.clone(),
         lhs.dtype(),
         device,
@@ -207,7 +211,7 @@ where
 {
     debug!("Using MLX native element-wise multiplication");
     
-    let mut output = MLXStorage::zeros(
+    let mut output = MLXStorage::uninitialized(
         output_shape.clone(),
         lhs.dtype(),
         device,
@@ -238,7 +242,7 @@ where
 {
     debug!("Using MLX native element-wise division");
     
-    let mut output = MLXStorage::zeros(
+    let mut output = MLXStorage::uninitialized(
         output_shape.clone(),
         lhs.dtype(),
         device,

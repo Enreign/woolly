@@ -51,17 +51,18 @@ headers = "0.4"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 
 # Rate limiting
-governor = "0.6"
+governor = "0.10"
 tokio-util = "0.7"
 
 # Configuration
-config = "0.14"
+config = "0.15"
 toml = "0.8"
 
 # Collections and utilities
 dashmap = { workspace = true }
 parking_lot = "0.12"
 once_cell = "1.20"
+rand = "0.8"
 
 # Time handling
 chrono = { workspace = true }

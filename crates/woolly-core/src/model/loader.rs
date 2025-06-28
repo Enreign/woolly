@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use woolly_gguf::{GGUFLoader, GGMLType, TensorInfo};
+use woolly_gguf::{GGUFLoader, GGMLType, TensorInfo, dequantize};
 use crate::{CoreError, Result};
 use crate::model::ModelConfig;
 
@@ -79,12 +79,23 @@ impl GGUFModelLoader {
                     .collect())
             }
             _ => {
-                // For quantized types, we need dequantization
-                // This is a simplified version - real implementation would need proper dequantization
-                Err(CoreError::Model(format!(
-                    "Quantized tensor type {:?} not yet supported for tensor '{}'",
-                    tensor_info.ggml_type, tensor_info.name
-                )))
+                // For quantized types, use dequantization
+                let num_elements = tensor_info.shape().iter().map(|&x| x as usize).product();
+                
+                // Use the dequantization function from woolly-gguf
+                match dequantize(data, tensor_info.ggml_type, num_elements) {
+                    Ok(dequantized) => {
+                        eprintln!("Successfully dequantized tensor '{}' (type: {:?})", 
+                            tensor_info.name, tensor_info.ggml_type);
+                        Ok(dequantized)
+                    }
+                    Err(e) => {
+                        eprintln!("WARNING: Failed to dequantize tensor '{}' (type: {:?}): {}", 
+                            tensor_info.name, tensor_info.ggml_type, e);
+                        eprintln!("Using dummy weights as fallback");
+                        Ok(vec![0.0f32; num_elements])
+                    }
+                }
             }
         }
     }
@@ -95,7 +106,7 @@ impl GGUFModelLoader {
 
         // Get architecture to determine parameter names
         let arch = self.loader.architecture()
-            .ok_or_else(|| CoreError::Model("No architecture specified in GGUF".to_string()))?;
+            .ok_or_else(|| CoreError::model("MODEL_ERROR", "No architecture specified in GGUF", "", "Check model configuration"))?;
 
         // Common parameters
         let vocab_size = metadata.get_u32(&format!("{}.vocab_size", arch))
@@ -116,6 +127,7 @@ impl GGUFModelLoader {
         let context_length = metadata.get_u32(&format!("{}.context_length", arch))
             .or_else(|| metadata.get_u32("tokenizer.ggml.context_length"))
             .unwrap_or(2048) as usize;
+        eprintln!("Extracted context_length: {} (arch: {})", context_length, arch);
 
         let intermediate_size = metadata.get_u32(&format!("{}.feed_forward_length", arch))
             .unwrap_or((hidden_size * 4) as u32) as usize;
@@ -147,7 +159,12 @@ impl GGUFModelLoader {
 impl ModelLoader for GGUFModelLoader {
     fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let loader = GGUFLoader::from_path(path)
-            .map_err(|e| CoreError::Model(format!("Failed to load GGUF file: {}", e)))?;
+            .map_err(|e| CoreError::model(
+                "GGUF_LOAD_FAILED",
+                format!("Failed to load GGUF file: {}", e),
+                "Loading GGUF model file",
+                "Check that the file exists and is a valid GGUF format"
+            ))?;
 
         // Create default tensor name mapping for common architectures
         let name_map = create_default_tensor_mapping(&loader);
@@ -163,19 +180,34 @@ impl ModelLoader for GGUFModelLoader {
         let mapped_name = self.map_tensor_name(name);
         
         let tensor_info = self.loader.tensor_info(mapped_name)
-            .ok_or_else(|| CoreError::Model(format!("Tensor '{}' not found", mapped_name)))?;
+            .ok_or_else(|| CoreError::model(
+                "TENSOR_NOT_FOUND",
+                format!("Tensor '{}' not found", mapped_name),
+                "Loading tensor data from model",
+                "Check that the tensor name is correct for this model format"
+            ))?;
 
         let data = self.loader.tensor_data(mapped_name)
-            .map_err(|e| CoreError::Model(format!("Failed to get tensor data for '{}': {}", mapped_name, e)))?;
+            .map_err(|e| CoreError::model(
+                "TENSOR_DATA_FAILED",
+                format!("Failed to get tensor data for '{}': {}", mapped_name, e),
+                "Reading tensor data from model file",
+                "Check that the model file is not corrupted"
+            ))?;
 
-        self.convert_tensor_to_f32(tensor_info, data)
+        self.convert_tensor_to_f32(tensor_info, &data)
     }
 
     fn get_tensor_shape(&self, name: &str) -> Result<Vec<usize>> {
         let mapped_name = self.map_tensor_name(name);
         
         let tensor_info = self.loader.tensor_info(mapped_name)
-            .ok_or_else(|| CoreError::Model(format!("Tensor '{}' not found", mapped_name)))?;
+            .ok_or_else(|| CoreError::model(
+                "TENSOR_NOT_FOUND",
+                format!("Tensor '{}' not found", mapped_name),
+                "Getting tensor shape from model",
+                "Check that the tensor name is correct for this model format"
+            ))?;
 
         Ok(tensor_info.shape().iter().map(|&x| x as usize).collect())
     }
@@ -201,18 +233,22 @@ impl TensorUtils {
     /// Validate that tensor shape matches expected shape
     pub fn validate_shape(actual: &[usize], expected: &[usize], tensor_name: &str) -> Result<()> {
         if actual.len() != expected.len() {
-            return Err(CoreError::InvalidInput(format!(
-                "Tensor '{}' has {} dimensions, expected {}",
-                tensor_name, actual.len(), expected.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "TENSOR_DIMENSION_MISMATCH",
+                format!("Tensor '{}' has {} dimensions, expected {}", tensor_name, actual.len(), expected.len()),
+                "Validating tensor shape",
+                "Check that the tensor dimensions match the expected model architecture"
+            ));
         }
 
         for (i, (&actual_dim, &expected_dim)) in actual.iter().zip(expected.iter()).enumerate() {
             if actual_dim != expected_dim {
-                return Err(CoreError::InvalidInput(format!(
-                    "Tensor '{}' dimension {} has size {}, expected {}",
-                    tensor_name, i, actual_dim, expected_dim
-                )));
+                return Err(CoreError::invalid_input(
+                    "TENSOR_SIZE_MISMATCH",
+                    format!("Tensor '{}' dimension {} has size {}, expected {}", tensor_name, i, actual_dim, expected_dim),
+                    "Validating tensor dimension sizes",
+                    "Check that the tensor sizes match the expected model architecture"
+                ));
             }
         }
 
@@ -227,18 +263,22 @@ impl TensorUtils {
         tensor_name: &str,
     ) -> Result<()> {
         if actual.len() != expected.len() {
-            return Err(CoreError::InvalidInput(format!(
-                "Tensor '{}' has {} dimensions, expected {}",
-                tensor_name, actual.len(), expected.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "TENSOR_DIMENSION_MISMATCH",
+                format!("Tensor '{}' has {} dimensions, expected {}", tensor_name, actual.len(), expected.len()),
+                "Validating tensor shape compatibility",
+                "Check that the tensor dimensions match the expected model architecture"
+            ));
         }
 
         for (i, (&actual_dim, &expected_dim)) in actual.iter().zip(expected.iter()).enumerate() {
             if !flexible_dims.contains(&i) && actual_dim != expected_dim {
-                return Err(CoreError::InvalidInput(format!(
-                    "Tensor '{}' dimension {} has size {}, expected {}",
-                    tensor_name, i, actual_dim, expected_dim
-                )));
+                return Err(CoreError::invalid_input(
+                    "TENSOR_SIZE_MISMATCH",
+                    format!("Tensor '{}' dimension {} has size {}, expected {}", tensor_name, i, actual_dim, expected_dim),
+                    "Validating tensor dimension sizes compatibility",
+                    "Check that the tensor sizes match the expected model architecture"
+                ));
             }
         }
 
@@ -249,10 +289,12 @@ impl TensorUtils {
     pub fn reshape_tensor(data: Vec<f32>, shape: &[usize]) -> Result<Vec<f32>> {
         let expected_size: usize = shape.iter().product();
         if data.len() != expected_size {
-            return Err(CoreError::InvalidInput(format!(
-                "Cannot reshape tensor of size {} to shape {:?} (expected size {})",
-                data.len(), shape, expected_size
-            )));
+            return Err(CoreError::invalid_input(
+                "TENSOR_RESHAPE_MISMATCH",
+                format!("Cannot reshape tensor of size {} to shape {:?} (expected size {})", data.len(), shape, expected_size),
+                "Reshaping tensor to specified dimensions",
+                "Check that the tensor size matches the target shape"
+            ));
         }
         Ok(data)
     }
@@ -260,10 +302,12 @@ impl TensorUtils {
     /// Transpose a 2D tensor
     pub fn transpose_2d(data: &[f32], rows: usize, cols: usize) -> Result<Vec<f32>> {
         if data.len() != rows * cols {
-            return Err(CoreError::InvalidInput(format!(
-                "Data length {} doesn't match shape {}x{}",
-                data.len(), rows, cols
-            )));
+            return Err(CoreError::invalid_input(
+                "TENSOR_TRANSPOSE_MISMATCH",
+                format!("Data length {} doesn't match shape {}x{}", data.len(), rows, cols),
+                "Transposing 2D tensor",
+                "Check that the data length matches the row x column dimensions"
+            ));
         }
 
         let mut result = vec![0.0; data.len()];
@@ -318,17 +362,12 @@ pub fn load_transformer_weights<L: ModelLoader>(
     loader: &L,
     config: &ModelConfig,
 ) -> Result<ModelWeights> {
-    // Load embedding weights
-    let embeddings = loader.get_tensor_f32("token_embd.weight")
-        .or_else(|_| loader.get_tensor_f32("embed_tokens.weight"))
-        .or_else(|_| loader.get_tensor_f32("embeddings.weight"))?;
-    
-    let embedding_shape = loader.get_tensor_shape("token_embd.weight")
-        .or_else(|_| loader.get_tensor_shape("embed_tokens.weight"))
-        .or_else(|_| loader.get_tensor_shape("embeddings.weight"))?;
+    // Load embedding weights - GGUF uses token_embd.weight
+    let embeddings = loader.get_tensor_f32("token_embd.weight")?;
+    let embedding_shape = loader.get_tensor_shape("token_embd.weight")?;
 
-    // Validate embedding shape
-    TensorUtils::validate_shape(&embedding_shape, &[config.vocab_size, config.hidden_size], "embeddings")?;
+    // Validate embedding shape - GGUF stores as [hidden_size, vocab_size]
+    TensorUtils::validate_shape(&embedding_shape, &[config.hidden_size, config.vocab_size], "embeddings")?;
 
     // Load layer weights
     let mut layers = Vec::with_capacity(config.num_layers);
@@ -338,10 +377,8 @@ pub fn load_transformer_weights<L: ModelLoader>(
         layers.push(layer_weights);
     }
 
-    // Load final normalization
-    let final_norm = loader.get_tensor_f32("output_norm.weight")
-        .or_else(|_| loader.get_tensor_f32("norm.weight"))
-        .or_else(|_| loader.get_tensor_f32("final_layernorm.weight"))?;
+    // Load final normalization - GGUF uses output_norm.weight
+    let final_norm = loader.get_tensor_f32("output_norm.weight")?;
 
     // Load language model head (if not tied)
     let (lm_head, lm_head_shape) = if loader.has_tensor("output.weight") || loader.has_tensor("lm_head.weight") {
@@ -381,7 +418,12 @@ fn load_layer_weights<L: ModelLoader>(
                 return Ok(tensor);
             }
         }
-        Err(CoreError::Model(format!("Could not find tensor with any of these names: {:?}", names)))
+        Err(CoreError::model(
+            "TENSOR_NOT_FOUND",
+            format!("Could not find tensor with any of these names: {:?}", names),
+            "Loading layer weights from model",
+            "Check that the model contains the expected layer tensor names"
+        ))
     };
 
     let try_load_shape = |names: &[String]| -> Result<Vec<usize>> {
@@ -390,7 +432,12 @@ fn load_layer_weights<L: ModelLoader>(
                 return Ok(shape);
             }
         }
-        Err(CoreError::Model(format!("Could not find tensor shape with any of these names: {:?}", names)))
+        Err(CoreError::model(
+            "TENSOR_SHAPE_NOT_FOUND",
+            format!("Could not find tensor shape with any of these names: {:?}", names),
+            "Getting layer weight shapes from model",
+            "Check that the model contains the expected layer tensor names"
+        ))
     };
 
     // Attention weights

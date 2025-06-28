@@ -908,6 +908,81 @@ pub mod simd {
         }
     }
     
+    /// Parallel Q8_0 dequantization for batch processing
+    pub fn dequantize_q8_0_batch(blocks: &[BlockQ8_0]) -> Vec<f32> {
+        // Use SIMD implementation if available and beneficial
+        if blocks.len() > 1 {
+            return dequantize_q8_0_simd(blocks);
+        }
+        
+        // Process multiple blocks in parallel when beneficial
+        #[cfg(feature = "parallel")]
+        {
+            if blocks.len() > 4 {
+                use rayon::prelude::*;
+                
+                let mut result = Vec::with_capacity(blocks.len() * QK8_0);
+                result.resize(blocks.len() * QK8_0, 0.0);
+                
+                result.par_chunks_mut(QK8_0)
+                    .zip(blocks.par_iter())
+                    .for_each(|(chunk, block)| {
+                        let d = block.d.to_f32();
+                        
+                        // Parallel processing of the block
+                        chunk.par_iter_mut()
+                            .zip(block.qs.par_iter())
+                            .for_each(|(out, &q)| {
+                                *out = q as f32 * d;
+                            });
+                    });
+                return result;
+            }
+        }
+        
+        // Use sequential version for small batches
+        super::dequantize_q8_0(blocks)
+    }
+
+    /// Parallel Q4_1 dequantization for batch processing
+    pub fn dequantize_q4_1_batch(blocks: &[BlockQ4_1]) -> Vec<f32> {
+        // Use SIMD implementation if available and beneficial
+        if blocks.len() > 1 {
+            return dequantize_q4_1_simd(blocks);
+        }
+        
+        // Process multiple blocks in parallel when beneficial
+        #[cfg(feature = "parallel")]
+        {
+            if blocks.len() > 4 {
+                use rayon::prelude::*;
+                
+                let mut result = Vec::with_capacity(blocks.len() * QK4_1);
+                result.resize(blocks.len() * QK4_1, 0.0);
+                
+                result.par_chunks_mut(QK4_1)
+                    .zip(blocks.par_iter())
+                    .for_each(|(chunk, block)| {
+                        let d = block.d.to_f32();
+                        let m = block.m.to_f32();
+                        
+                        // Vectorize the inner loop
+                        for j in 0..(QK4_1 / 2) {
+                            let x0 = (block.qs[j] & 0x0F) as f32;
+                            let x1 = (block.qs[j] >> 4) as f32;
+                            
+                            chunk[j] = x0 * d + m;
+                            chunk[j + QK4_1 / 2] = x1 * d + m;
+                        }
+                    });
+                return result;
+            }
+        }
+        
+        // Use sequential version for small batches
+        super::dequantize_q4_1(blocks)
+    }
+
     /// SIMD-optimized Q4_0 dequantization for batch processing
     pub fn dequantize_q4_0_batch(blocks: &[BlockQ4_0]) -> Vec<f32> {
         // Use SIMD implementation if available and beneficial
@@ -944,6 +1019,81 @@ pub mod simd {
         
         // Use sequential version for small batches or when parallel is not available
         super::dequantize_q4_0(blocks)
+    }
+
+    /// Parallel Q5_0 dequantization for batch processing
+    pub fn dequantize_q5_0_batch(blocks: &[BlockQ5_0]) -> Vec<f32> {
+        // Process multiple blocks in parallel when beneficial
+        #[cfg(feature = "parallel")]
+        {
+            if blocks.len() > 4 {
+                use rayon::prelude::*;
+                
+                let mut result = Vec::with_capacity(blocks.len() * QK5_0);
+                result.resize(blocks.len() * QK5_0, 0.0);
+                
+                result.par_chunks_mut(QK5_0)
+                    .zip(blocks.par_iter())
+                    .for_each(|(chunk, block)| {
+                        let d = block.d.to_f32();
+                        let qh = u32::from_le_bytes(block.qh);
+                        
+                        // Vectorize the inner loop
+                        for j in 0..(QK5_0 / 2) {
+                            let xh_0 = ((qh >> j) << 4) & 0x10;
+                            let xh_1 = (qh >> (j + 12)) & 0x10;
+                            
+                            let x0 = (((block.qs[j] & 0x0F) as u32) | xh_0) as i32 - 16;
+                            let x1 = (((block.qs[j] >> 4) as u32) | xh_1) as i32 - 16;
+                            
+                            chunk[j] = x0 as f32 * d;
+                            chunk[j + QK5_0 / 2] = x1 as f32 * d;
+                        }
+                    });
+                return result;
+            }
+        }
+        
+        // Use sequential version for small batches
+        super::dequantize_q5_0(blocks)
+    }
+
+    /// Parallel Q5_1 dequantization for batch processing
+    pub fn dequantize_q5_1_batch(blocks: &[BlockQ5_1]) -> Vec<f32> {
+        // Process multiple blocks in parallel when beneficial
+        #[cfg(feature = "parallel")]
+        {
+            if blocks.len() > 4 {
+                use rayon::prelude::*;
+                
+                let mut result = Vec::with_capacity(blocks.len() * QK5_1);
+                result.resize(blocks.len() * QK5_1, 0.0);
+                
+                result.par_chunks_mut(QK5_1)
+                    .zip(blocks.par_iter())
+                    .for_each(|(chunk, block)| {
+                        let d = block.d.to_f32();
+                        let m = block.m.to_f32();
+                        let qh = u32::from_le_bytes(block.qh);
+                        
+                        // Vectorize the inner loop
+                        for j in 0..(QK5_1 / 2) {
+                            let xh_0 = ((qh >> j) << 4) & 0x10;
+                            let xh_1 = (qh >> (j + 12)) & 0x10;
+                            
+                            let x0 = ((block.qs[j] & 0x0F) as u32) | xh_0;
+                            let x1 = ((block.qs[j] >> 4) as u32) | xh_1;
+                            
+                            chunk[j] = x0 as f32 * d + m;
+                            chunk[j + QK5_1 / 2] = x1 as f32 * d + m;
+                        }
+                    });
+                return result;
+            }
+        }
+        
+        // Use sequential version for small batches
+        super::dequantize_q5_1(blocks)
     }
     
     /// Scalar fallback for quantized matrix-vector multiplication with Q4_0
@@ -1027,10 +1177,34 @@ pub mod optimized {
                     Ok(dequantize_q4_0(blocks))
                 }
             }
-            QuantizedStorage::Q4_1(blocks) => Ok(dequantize_q4_1(blocks)),
-            QuantizedStorage::Q5_0(blocks) => Ok(dequantize_q5_0(blocks)),
-            QuantizedStorage::Q5_1(blocks) => Ok(dequantize_q5_1(blocks)),
-            QuantizedStorage::Q8_0(blocks) => Ok(super::simd::dequantize_q8_0_simd(blocks)),
+            QuantizedStorage::Q4_1(blocks) => {
+                if blocks.len() > 4 {
+                    Ok(super::simd::dequantize_q4_1_batch(blocks))
+                } else {
+                    Ok(dequantize_q4_1(blocks))
+                }
+            }
+            QuantizedStorage::Q5_0(blocks) => {
+                if blocks.len() > 4 {
+                    Ok(super::simd::dequantize_q5_0_batch(blocks))
+                } else {
+                    Ok(dequantize_q5_0(blocks))
+                }
+            }
+            QuantizedStorage::Q5_1(blocks) => {
+                if blocks.len() > 4 {
+                    Ok(super::simd::dequantize_q5_1_batch(blocks))
+                } else {
+                    Ok(dequantize_q5_1(blocks))
+                }
+            }
+            QuantizedStorage::Q8_0(blocks) => {
+                if blocks.len() > 4 {
+                    Ok(super::simd::dequantize_q8_0_batch(blocks))
+                } else {
+                    Ok(super::simd::dequantize_q8_0_simd(blocks))
+                }
+            }
             _ => Err(QuantizationError::UnsupportedScheme("Unsupported storage type".to_string())),
         }
     }

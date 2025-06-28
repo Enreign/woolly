@@ -28,18 +28,28 @@ tracing = { workspace = true }
 async-trait = { workspace = true }
 
 # Additional core-specific dependencies
-dashmap = "6.0"
+dashmap = "6.1"
 futures = "0.3"
 parking_lot = "0.12"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 num_cpus = { workspace = true }
 toml = "0.8"
 num-traits = "0.2"
-regex = "1.10"
+regex = "1.11"
 rand = "0.8"
 half = "2.4"
 bytemuck = "1.19"
-lru = "0.12"
+lru = "0.14"
+unicode-normalization = "0.1"
+rayon = { workspace = true }
+lazy_static = "1.5"
+
+# High-performance BLAS libraries
+[target.'cfg(target_os = "macos")'.dependencies]
+accelerate-src = "0.3"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+openblas-src = { version = "0.10", features = ["cblas", "system"] }
 
 [dev-dependencies]
 criterion = { workspace = true }

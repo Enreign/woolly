@@ -5,7 +5,7 @@ members = [
     "crates/woolly-tensor",
     "crates/woolly-gguf",
     "crates/woolly-mcp",
-    "crates/woolly-mlx",
+    # "crates/woolly-mlx",  # Temporarily disabled for ultra-optimization
     "crates/woolly-bench",
     "crates/woolly-cli",
     "crates/woolly-server",
@@ -68,18 +68,23 @@ num_cpus = "1.16"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
 libc = "0.2"
+rayon = "1.9"
 
 # Testing
 criterion = { version = "0.5", features = ["html_reports"] }
 proptest = "1.5"
 
 [profile.release]
-lto = true
+lto = "fat"
 opt-level = 3
 codegen-units = 1
+panic = "abort"
+strip = true
 
 [profile.dev]
 opt-level = 0
 
 [profile.test]
 opt-level = 2
+
+# SIMD compilation flags are set via .cargo/config.toml instead

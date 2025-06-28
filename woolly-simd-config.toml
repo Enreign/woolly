@@ -1,0 +1,57 @@
+# Woolly Server Configuration
+
+[server]
+bind = "127.0.0.1:8080"
+max_concurrent_requests = 100
+request_timeout_seconds = 300
+
+[models]
+models_directory = "./models"
+preload_models = ["granite"]
+
+# Model configuration for granite
+[[models.configs]]
+name = "granite"
+path = "granite-3.3-8b-instruct-Q4_K_M.gguf"
+context_size = 4096
+batch_size = 512
+
+[engine]
+max_batch_size = 512
+max_sequence_length = 4096
+max_context_length = 4096
+use_flash_attention = false
+enable_kv_cache = true
+use_gpu = false
+
+[auth]
+jwt_secret = "test-secret"
+jwt_expiration = 3600
+api_keys = ["test-api-key"]
+allow_anonymous = true
+
+[rate_limit]
+authenticated_rpm = 60
+anonymous_rpm = 10
+burst_capacity = 10
+
+[cors]
+enabled = true
+allowed_origins = ["*"]
+allowed_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+allowed_headers = ["Content-Type", "Authorization", "X-API-Key"]
+max_age = 3600
+
+[limits]
+max_body_size = 10485760
+request_timeout = 300
+max_tokens = 4096
+max_concurrent_requests = 100
+
+[mcp]
+enabled = false
+protocol_version = "0.1.0"
+
+[mcp.server_info]
+name = "Woolly MCP Server"
+version = "0.1.0"

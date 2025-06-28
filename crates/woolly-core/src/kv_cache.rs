@@ -14,7 +14,7 @@ use tracing::{debug, info, trace, warn};
 use crate::{CoreError, Result};
 
 /// Configuration for KV cache behavior
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct KVCacheConfig {
     /// Maximum memory for KV cache (bytes)
     pub max_memory: u64,
@@ -59,7 +59,7 @@ impl Default for KVCacheConfig {
 }
 
 /// Eviction policies for KV cache management
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EvictionPolicy {
     /// Least Recently Used
     LRU,
@@ -206,7 +206,7 @@ pub struct OptimizedKVCache {
     stats: Arc<RwLock<KVCacheStats>>,
     
     /// Memory blocks for efficient allocation
-    memory_blocks: Arc<Mutex<Vec<MemoryBlock>>>,
+    _memory_blocks: Arc<Mutex<Vec<MemoryBlock>>>,
 }
 
 /// Memory block for efficient KV cache allocation
@@ -234,7 +234,7 @@ impl OptimizedKVCache {
             access_order: Arc::new(Mutex::new(VecDeque::new())),
             current_memory: Arc::new(Mutex::new(0)),
             stats: Arc::new(RwLock::new(KVCacheStats::default())),
-            memory_blocks: Arc::new(Mutex::new(Vec::new())),
+            _memory_blocks: Arc::new(Mutex::new(Vec::new())),
         }
     }
     

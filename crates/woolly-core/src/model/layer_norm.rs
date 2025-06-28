@@ -33,8 +33,11 @@ impl LayerNorm {
     pub fn forward(&self, input: &[f32]) -> Result<Vec<f32>> {
         let total_elements = input.len();
         if total_elements % self.normalized_shape != 0 {
-            return Err(crate::CoreError::InvalidInput(
-                "Input size must be divisible by normalized_shape".to_string(),
+            return Err(crate::CoreError::invalid_input(
+                "LAYERNORM_INPUT_SIZE_MISMATCH",
+                "Input size must be divisible by normalized_shape",
+                "layer normalization forward pass",
+                "Check input tensor dimensions"
             ));
         }
 
@@ -98,10 +101,13 @@ impl LayerNorm {
     /// Load weights from external data
     pub fn load_weights(&mut self, weights: &[f32]) -> Result<()> {
         if weights.len() != self.normalized_shape {
-            return Err(crate::CoreError::InvalidInput(format!(
-                "Weight size mismatch: expected {}, got {}", 
-                self.normalized_shape, weights.len()
-            )));
+            return Err(crate::CoreError::invalid_input(
+                "LAYER_NORM_WEIGHT_SIZE_MISMATCH",
+                format!("Weight size mismatch: expected {}, got {}", 
+                    self.normalized_shape, weights.len()),
+                "Layer normalization weight loading",
+                "Ensure weight tensor has the correct dimensions"
+            ));
         }
 
         self.weight.copy_from_slice(weights);
@@ -135,8 +141,11 @@ impl RMSNorm {
     pub fn forward(&self, input: &[f32]) -> Result<Vec<f32>> {
         let total_elements = input.len();
         if total_elements % self.normalized_shape != 0 {
-            return Err(crate::CoreError::InvalidInput(
-                "Input size must be divisible by normalized_shape".to_string(),
+            return Err(crate::CoreError::invalid_input(
+                "LAYERNORM_INPUT_SIZE_MISMATCH",
+                "Input size must be divisible by normalized_shape",
+                "layer normalization forward pass",
+                "Check input tensor dimensions"
             ));
         }
 
@@ -176,10 +185,13 @@ impl RMSNorm {
     /// Load weights from external data
     pub fn load_weights(&mut self, weights: &[f32]) -> Result<()> {
         if weights.len() != self.normalized_shape {
-            return Err(crate::CoreError::InvalidInput(format!(
-                "Weight size mismatch: expected {}, got {}", 
-                self.normalized_shape, weights.len()
-            )));
+            return Err(crate::CoreError::invalid_input(
+                "LAYER_NORM_WEIGHT_SIZE_MISMATCH",
+                format!("Weight size mismatch: expected {}, got {}", 
+                    self.normalized_shape, weights.len()),
+                "Layer normalization weight loading",
+                "Ensure weight tensor has the correct dimensions"
+            ));
         }
 
         self.weight.copy_from_slice(weights);
@@ -208,8 +220,11 @@ impl GroupNorm {
     /// Create a new GroupNorm layer
     pub fn new(num_groups: usize, num_channels: usize, epsilon: f32, use_bias: bool) -> Result<Self> {
         if num_channels % num_groups != 0 {
-            return Err(crate::CoreError::InvalidInput(
-                "Number of channels must be divisible by number of groups".to_string(),
+            return Err(crate::CoreError::invalid_input(
+                "GROUPNORM_CHANNELS_GROUPS_MISMATCH",
+                "Number of channels must be divisible by number of groups",
+                "group normalization initialization",
+                "Ensure num_channels is divisible by num_groups"
             ));
         }
 
@@ -228,8 +243,11 @@ impl GroupNorm {
     pub fn forward(&self, input: &[f32], batch_size: usize, spatial_size: usize) -> Result<Vec<f32>> {
         let expected_size = batch_size * self.num_channels * spatial_size;
         if input.len() != expected_size {
-            return Err(crate::CoreError::InvalidInput(
+            return Err(crate::CoreError::invalid_input(
+                "GROUP_NORM_INPUT_SIZE_MISMATCH",
                 format!("Expected input size {}, got {}", expected_size, input.len()),
+                "Group normalization forward pass",
+                "Ensure input tensor dimensions match expected batch size and spatial dimensions"
             ));
         }
 

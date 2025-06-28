@@ -5,12 +5,12 @@
 //! when multiple sessions share the same model.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock, Weak};
 use std::time::{Duration, Instant};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace};
 
-use crate::{CoreError, Result};
+use crate::Result;
 
 /// Configuration for model caching
 #[derive(Debug, Clone)]

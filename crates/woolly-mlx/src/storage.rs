@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use std::ptr;
 use tracing::{debug, trace};
 
-use woolly_tensor::backend::{TensorStorage, DType, Device as TensorDevice};
+use woolly_tensor::backend::{TensorStorage, DType, Device as TensorDevice, TensorError};
 use woolly_tensor::shape::Shape;
 
 use crate::device::{Device, MLXDevice};
@@ -32,6 +32,11 @@ pub struct MLXStorage<T> {
     /// Element type marker
     _phantom: PhantomData<T>,
 }
+
+// MLX arrays are designed to work across threads in unified memory
+// This is a promise that we'll handle synchronization properly
+unsafe impl<T> Send for MLXStorage<T> where T: Send {}
+unsafe impl<T> Sync for MLXStorage<T> where T: Sync {}
 
 impl<T> fmt::Debug for MLXStorage<T>
 where
@@ -102,6 +107,16 @@ where
     pub fn full(shape: Shape, value: T, dtype: DType, device: Device) -> Result<Self> {
         let total_elements = shape.numel();
         let data = vec![value; total_elements];
+        Self::from_data(data, shape, dtype, device)
+    }
+    
+    /// Create new uninitialized MLX storage (for operations that will fill the data)
+    pub fn uninitialized(shape: Shape, dtype: DType, device: Device) -> Result<Self>
+    where
+        T: Default,
+    {
+        let total_elements = shape.numel();
+        let data = vec![T::default(); total_elements];
         Self::from_data(data, shape, dtype, device)
     }
     
@@ -287,12 +302,12 @@ where
                 suggestion: "Use CPU or Metal device for MLX backend".to_string(),
             }),
         };
-        
+
         let shape = Shape::vector(capacity);
         let dtype = DType::F32; // Default type
-        
-        Self::zeros(shape, dtype, mlx_device)
-            .map_err(|e| e.into())
+
+        Self::uninitialized(shape, dtype, mlx_device)
+            .map_err(|e| TensorError::from(e))
     }
     
     fn slice(&self, offset: usize, len: usize) -> woolly_tensor::backend::Result<Self>
@@ -313,7 +328,7 @@ where
         
         // Get the data
         let mut storage_clone = self.clone();
-        storage_clone.ensure_cached_data().map_err(|e| e.into())?;
+        storage_clone.ensure_cached_data().map_err(|e| TensorError::from(e))?;
         
         if let Some(ref data) = storage_clone.cached_data {
             let sliced_data = data[offset..offset + len].to_vec();
@@ -364,9 +379,9 @@ where
         }
         
         // Ensure both storages have cached data
-        self.ensure_cached_data().map_err(|e| e.into())?;
+        self.ensure_cached_data().map_err(|e| TensorError::from(e))?;
         let mut other_clone = other.clone();
-        other_clone.ensure_cached_data().map_err(|e| e.into())?;
+        other_clone.ensure_cached_data().map_err(|e| TensorError::from(e))?;
         
         if let (Some(ref mut dst_data), Some(ref src_data)) = 
             (&mut self.cached_data, &other_clone.cached_data) {
@@ -392,7 +407,7 @@ where
     
     fn fill(&mut self, value: T) -> woolly_tensor::backend::Result<()> {
         // Ensure we have cached data
-        self.ensure_cached_data().map_err(|e| e.into())?;
+        self.ensure_cached_data().map_err(|e| TensorError::from(e))?;
         
         if let Some(ref mut data) = self.cached_data {
             data.fill(value);
@@ -414,7 +429,7 @@ where
     
     fn to_vec(&self) -> woolly_tensor::backend::Result<Vec<T>> {
         let mut storage_clone = self.clone();
-        storage_clone.ensure_cached_data().map_err(|e| e.into())?;
+        storage_clone.ensure_cached_data().map_err(|e| TensorError::from(e))?;
         
         if let Some(ref data) = storage_clone.cached_data {
             Ok(data.clone())

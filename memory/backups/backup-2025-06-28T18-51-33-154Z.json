@@ -1,0 +1,114 @@
+{
+  "timestamp": "2025-06-28T18:51:33.154Z",
+  "version": "1.0",
+  "entries": [
+    {
+      "id": "entry_mcglkm8h_wg76immf6",
+      "key": "woolly_current_performance",
+      "value": "Current: 0.13 tokens/sec (77s per token). Target: >15 tokens/sec. Gap: 115x slower. Main bottleneck: GGUF dequantization taking 90+ seconds per layer access. SIMD implementation broken and makes performance 5.3x worse.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:30.833Z",
+      "updatedAt": "2025-06-28T18:51:30.833Z",
+      "lastAccessedAt": "2025-06-28T18:51:30.833Z",
+      "version": 1,
+      "size": 249,
+      "compressed": false,
+      "checksum": "cbb53f709b742e28cc9ee9e6157f9383fba5723874eef61d6914eb12dd46dbfa",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcglko0x_p1dxk1mlc",
+      "key": "woolly_architecture",
+      "value": "Modular workspace with 7 crates. Key issues: Over-engineered with 6+ transformer variants, disabled MLX backend, mixed optimization levels. Strengths: Comprehensive SIMD support, advanced memory pooling, flexible eviction policies.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:33.153Z",
+      "updatedAt": "2025-06-28T18:51:33.153Z",
+      "lastAccessedAt": "2025-06-28T18:51:33.153Z",
+      "version": 1,
+      "size": 262,
+      "compressed": false,
+      "checksum": "f4bb10e5ac3f5edc580c4ca71e44237fe23143b40d0d5b3f0d4314e85b0e7910",
+      "references": [],
+      "dependencies": []
+    }
+  ],
+  "statistics": {
+    "overview": {
+      "totalEntries": 2,
+      "totalSize": 511,
+      "compressedEntries": 0,
+      "compressionRatio": 1,
+      "indexSize": 100,
+      "memoryUsage": 9420256,
+      "diskUsage": 0
+    },
+    "distribution": {
+      "byNamespace": {
+        "default": {
+          "count": 2,
+          "size": 511
+        }
+      },
+      "byType": {
+        "string": {
+          "count": 2,
+          "size": 511
+        }
+      },
+      "byOwner": {
+        "system": {
+          "count": 2,
+          "size": 511
+        }
+      },
+      "byAccessLevel": {
+        "shared": {
+          "count": 2,
+          "size": 511
+        }
+      }
+    },
+    "temporal": {
+      "entriesCreatedLast24h": 2,
+      "entriesUpdatedLast24h": 2,
+      "entriesAccessedLast24h": 2,
+      "oldestEntry": "2025-06-28T18:51:30.833Z",
+      "newestEntry": "2025-06-28T18:51:33.153Z"
+    },
+    "performance": {
+      "averageQueryTime": 0,
+      "averageWriteTime": 0,
+      "cacheHitRatio": 0,
+      "indexEfficiency": 0.95
+    },
+    "health": {
+      "expiredEntries": 0,
+      "orphanedReferences": 0,
+      "duplicateKeys": 0,
+      "corruptedEntries": 0,
+      "recommendedCleanup": false
+    },
+    "optimization": {
+      "suggestions": [],
+      "potentialSavings": {
+        "compression": 0,
+        "cleanup": 0,
+        "deduplication": 0
+      },
+      "indexOptimization": [
+        "Consider periodic index rebuilding for optimal performance"
+      ]
+    }
+  }
+}

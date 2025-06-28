@@ -3,6 +3,9 @@
 use crate::backend::{Result, TensorError};
 use crate::shape::Shape;
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 /// Matrix multiplication configurations
 #[derive(Debug, Clone, Copy)]
 pub struct MatMulConfig {
@@ -174,29 +177,80 @@ impl Gemm {
             }
         }
         
-        // Main blocking loops
-        for jc in (0..n).step_by(nc) {
-            let nc_cur = std::cmp::min(nc, n - jc);
+        // Main blocking loops with parallel processing
+        #[cfg(feature = "parallel")]
+        {
+            // Create block task list for parallel processing
+            let mut block_tasks = Vec::new();
+            for jc in (0..n).step_by(nc) {
+                let nc_cur = std::cmp::min(nc, n - jc);
+                for pc in (0..k).step_by(kc) {
+                    let kc_cur = std::cmp::min(kc, k - pc);
+                    for ic in (0..m).step_by(mc) {
+                        let mc_cur = std::cmp::min(mc, m - ic);
+                        block_tasks.push((ic, jc, pc, mc_cur, nc_cur, kc_cur));
+                    }
+                }
+            }
             
-            for pc in (0..k).step_by(kc) {
-                let kc_cur = std::cmp::min(kc, k - pc);
+            // Process blocks in parallel
+            use std::sync::Mutex;
+            let c_mutex = Mutex::new(c);
+            
+            block_tasks.par_iter().for_each(|&(ic, jc, pc, mc_cur, nc_cur, kc_cur)| {
+                // Compute block result
+                let mut temp_result = vec![0.0f32; mc_cur * nc_cur];
                 
-                for ic in (0..m).step_by(mc) {
-                    let mc_cur = std::cmp::min(mc, m - ic);
+                Self::gemm_micro_kernel_nn_parallel(
+                    &a[ic * lda + pc..],
+                    &b[pc * ldb + jc..],
+                    &mut temp_result,
+                    mc_cur,
+                    nc_cur,
+                    kc_cur,
+                    lda,
+                    ldb,
+                    nc_cur,
+                    config.alpha,
+                );
+                
+                // Write result back to C matrix with lock
+                let mut c_guard = c_mutex.lock().unwrap();
+                for i in 0..mc_cur {
+                    for j in 0..nc_cur {
+                        let src_idx = i * nc_cur + j;
+                        let dst_idx = (ic + i) * ldc + (jc + j);
+                        c_guard[dst_idx] += temp_result[src_idx];
+                    }
+                }
+            });
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            // Sequential fallback
+            for jc in (0..n).step_by(nc) {
+                let nc_cur = std::cmp::min(nc, n - jc);
+                
+                for pc in (0..k).step_by(kc) {
+                    let kc_cur = std::cmp::min(kc, k - pc);
                     
-                    // Inner kernel for this block
-                    Self::gemm_micro_kernel_nn(
-                        &a[ic * lda + pc..],
-                        &b[pc * ldb + jc..],
-                        &mut c[ic * ldc + jc..],
-                        mc_cur,
-                        nc_cur,
-                        kc_cur,
-                        lda,
-                        ldb,
-                        ldc,
-                        config.alpha,
-                    );
+                    for ic in (0..m).step_by(mc) {
+                        let mc_cur = std::cmp::min(mc, m - ic);
+                        
+                        // Inner kernel for this block
+                        Self::gemm_micro_kernel_nn(
+                            &a[ic * lda + pc..],
+                            &b[pc * ldb + jc..],
+                            &mut c[ic * ldc + jc..],
+                            mc_cur,
+                            nc_cur,
+                            kc_cur,
+                            lda,
+                            ldb,
+                            ldc,
+                            config.alpha,
+                        );
+                    }
                 }
             }
         }
@@ -281,6 +335,48 @@ impl Gemm {
         }
     }
     
+    /// Parallel micro kernel for multi-threaded computation
+    #[cfg(feature = "parallel")]
+    fn gemm_micro_kernel_nn_parallel(
+        a: &[f32],
+        b: &[f32],
+        c: &mut [f32],
+        m: usize,
+        n: usize,
+        k: usize,
+        lda: usize,
+        ldb: usize,
+        ldc: usize,
+        alpha: f32,
+    ) {
+        // Use parallel processing for larger blocks
+        if m >= 8 && n >= 8 {
+            use std::sync::Mutex;
+            let c_mutex = Mutex::new(c);
+            
+            // Parallel computation over rows
+            (0..m).into_par_iter().for_each(|i| {
+                let mut row_results = vec![0.0f32; n];
+                for j in 0..n {
+                    let mut sum = 0.0f32;
+                    for l in 0..k {
+                        sum += a[i * lda + l] * b[l * ldb + j];
+                    }
+                    row_results[j] = alpha * sum;
+                }
+                
+                // Write row results back to output matrix
+                let mut c_guard = c_mutex.lock().unwrap();
+                for j in 0..n {
+                    c_guard[i * ldc + j] = row_results[j];
+                }
+            });
+        } else {
+            // Fallback to scalar for small blocks
+            Self::gemm_micro_kernel_scalar_optimized(a, b, c, m, n, k, lda, ldb, ldc, alpha);
+        }
+    }
+
     /// Optimized scalar micro kernel with better memory access patterns
     fn gemm_micro_kernel_scalar_optimized(
         a: &[f32],
@@ -634,25 +730,63 @@ impl BatchedMatMul {
         let c_matrix_size = m * n;
         
         // Perform matrix multiplication for each batch
-        for batch_idx in 0..batch_size {
-            let a_offset = batch_idx * a_matrix_size;
-            let b_offset = batch_idx * b_matrix_size;
-            let c_offset = batch_idx * c_matrix_size;
+        #[cfg(feature = "parallel")]
+        {
+            use std::sync::Mutex;
+            let c_mutex = Mutex::new(c);
             
-            // Extract slices for current batch
-            let a_batch = &a[a_offset..a_offset + a_matrix_size];
-            let b_batch = &b[b_offset..b_offset + b_matrix_size];
-            let c_batch = &mut c[c_offset..c_offset + c_matrix_size];
-            
-            // Perform matrix multiplication for this batch
-            Gemm::compute(
-                a_batch,
-                b_batch,
-                c_batch,
-                &Shape::matrix(m, k),
-                &Shape::matrix(k, n),
-                &MatMulConfig::default(),
-            )?;
+            (0..batch_size).into_par_iter().try_for_each(|batch_idx| -> Result<()> {
+                let a_offset = batch_idx * a_matrix_size;
+                let b_offset = batch_idx * b_matrix_size;
+                let c_offset = batch_idx * c_matrix_size;
+                
+                // Extract slices for current batch
+                let a_batch = &a[a_offset..a_offset + a_matrix_size];
+                let b_batch = &b[b_offset..b_offset + b_matrix_size];
+                
+                // Compute result in temporary buffer
+                let mut c_temp = vec![0.0f32; c_matrix_size];
+                
+                // Perform matrix multiplication for this batch
+                Gemm::compute(
+                    a_batch,
+                    b_batch,
+                    &mut c_temp,
+                    &Shape::matrix(m, k),
+                    &Shape::matrix(k, n),
+                    &MatMulConfig::default(),
+                )?;
+                
+                // Copy result back with lock
+                let mut c_guard = c_mutex.lock().unwrap();
+                let c_batch = &mut c_guard[c_offset..c_offset + c_matrix_size];
+                c_batch.copy_from_slice(&c_temp);
+                
+                Ok(())
+            })?;
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            for batch_idx in 0..batch_size {
+                let a_offset = batch_idx * a_matrix_size;
+                let b_offset = batch_idx * b_matrix_size;
+                let c_offset = batch_idx * c_matrix_size;
+                
+                // Extract slices for current batch
+                let a_batch = &a[a_offset..a_offset + a_matrix_size];
+                let b_batch = &b[b_offset..b_offset + b_matrix_size];
+                let c_batch = &mut c[c_offset..c_offset + c_matrix_size];
+                
+                // Perform matrix multiplication for this batch
+                Gemm::compute(
+                    a_batch,
+                    b_batch,
+                    c_batch,
+                    &Shape::matrix(m, k),
+                    &Shape::matrix(k, n),
+                    &MatMulConfig::default(),
+                )?;
+            }
         }
         
         Ok(())
@@ -706,12 +840,26 @@ impl MatVec {
             ));
         }
         
-        for i in 0..m {
-            let mut sum = 0.0f32;
-            for j in 0..n {
-                sum += matrix[i * n + j] * vector[j];
+        #[cfg(feature = "parallel")]
+        {
+            // Parallel matrix-vector multiplication
+            output.par_iter_mut().enumerate().for_each(|(i, output_val)| {
+                let mut sum = 0.0f32;
+                for j in 0..n {
+                    sum += matrix[i * n + j] * vector[j];
+                }
+                *output_val = sum;
+            });
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            for i in 0..m {
+                let mut sum = 0.0f32;
+                for j in 0..n {
+                    sum += matrix[i * n + j] * vector[j];
+                }
+                output[i] = sum;
             }
-            output[i] = sum;
         }
         
         Ok(())
@@ -742,9 +890,22 @@ impl Outer {
             ));
         }
         
-        for i in 0..m {
-            for j in 0..n {
-                output[i * n + j] = x[i] * y[j];
+        #[cfg(feature = "parallel")]
+        {
+            // Parallel outer product computation
+            output.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
+                let x_val = x[i];
+                for (j, output_val) in row.iter_mut().enumerate() {
+                    *output_val = x_val * y[j];
+                }
+            });
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            for i in 0..m {
+                for j in 0..n {
+                    output[i * n + j] = x[i] * y[j];
+                }
             }
         }
         

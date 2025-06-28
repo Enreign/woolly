@@ -3,6 +3,8 @@
 use std::ops::{Add, Div};
 use tracing::{debug, trace};
 
+use woolly_tensor::backend::TensorStorage;
+
 use crate::backend::MLXBackend;
 use crate::device::Device;
 use crate::error::{MLXError, Result};

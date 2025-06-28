@@ -13,108 +13,166 @@ pub enum TensorError {
     /// Tensors have incompatible shapes for the operation
     #[error("Shape compatibility error [{code}]: {message}\nOperation: {operation}\nLeft shape: {left_shape}\nRight shape: {right_shape}\nSuggestion: {suggestion}")]
     IncompatibleShapes {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// The operation that failed
         operation: String,
+        /// String representation of the left tensor shape
         left_shape: String,
+        /// String representation of the right tensor shape
         right_shape: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// The shape is invalid for the operation
     #[error("Invalid shape [{code}]: {message}\nShape: {shape}\nOperation: {operation}\nReason: {reason}\nSuggestion: {suggestion}")]
     InvalidShape {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// String representation of the invalid shape
         shape: String,
+        /// The operation that failed
         operation: String,
+        /// Reason why the shape is invalid
         reason: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Invalid tensor dimensions or size
     #[error("Dimension error [{code}]: {message}\nExpected: {expected}\nActual: {actual}\nOperation: {operation}\nSuggestion: {suggestion}")]
     InvalidDimensions {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// Expected dimensions description
         expected: String,
+        /// Actual dimensions description
         actual: String,
+        /// The operation that failed
         operation: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Generic backend error
     #[error("Backend error [{code}]: {message}\nBackend: {backend}\nOperation: {operation}\nSuggestion: {suggestion}")]
     BackendError {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// Name of the backend that failed
         backend: String,
+        /// The operation that failed
         operation: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Index is out of bounds for the given dimension
     #[error("Index out of bounds [{code}]: {message}\nIndex: {index}, Dimension: {dim}, Size: {size}\nOperation: {operation}\nSuggestion: {suggestion}")]
     OutOfBounds { 
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// The index that was out of bounds
         index: usize, 
+        /// The dimension where the index was applied
         dim: usize, 
+        /// The size of that dimension
         size: usize,
+        /// The operation that failed
         operation: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Error during quantization operations
     #[error("Quantization error [{code}]: {message}\nScheme: {scheme}\nData type: {dtype}\nSuggestion: {suggestion}")]
     QuantizationError {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// The quantization scheme that failed
         scheme: String,
+        /// The data type involved
         dtype: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Operation not supported by the backend
     #[error("Unsupported operation [{code}]: {message}\nOperation: {operation}\nBackend: {backend}\nData type: {dtype}\nSuggestion: {suggestion}")]
     UnsupportedOperation {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// The unsupported operation
         operation: String,
+        /// The backend that doesn't support this operation
         backend: String,
+        /// The data type involved
         dtype: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Memory allocation or management errors
     #[error("Memory error [{code}]: {message}\nRequested: {requested} bytes\nAvailable: {available}\nBackend: {backend}\nSuggestion: {suggestion}")]
     MemoryError {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// Number of bytes requested
         requested: u64,
+        /// Available memory description
         available: String,
+        /// The backend where memory allocation failed
         backend: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Device or compute errors
     #[error("Device error [{code}]: {message}\nDevice: {device}\nOperation: {operation}\nSuggestion: {suggestion}")]
     DeviceError {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// The device that encountered an error
         device: String,
+        /// The operation that failed
         operation: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
     
     /// Data type conversion or compatibility errors
     #[error("Data type error [{code}]: {message}\nFrom: {from_dtype}\nTo: {to_dtype}\nOperation: {operation}\nSuggestion: {suggestion}")]
     DataTypeError {
+        /// Error code for programmatic handling
         code: &'static str,
+        /// Human-readable error message
         message: String,
+        /// Source data type
         from_dtype: String,
+        /// Target data type
         to_dtype: String,
+        /// The operation that failed
         operation: String,
+        /// Suggested fix for the error
         suggestion: String,
     },
 }

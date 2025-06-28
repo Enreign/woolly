@@ -1,0 +1,17 @@
+🔍 Measuring Woolly Baseline Performance (SIMD Disabled)
+========================================================
+
+Test 1: Single token generation...
+❌ Error: Core engine error: Model error [MODEL_ERROR]: No model loaded
+
+Test 2: Multi-token generation (5 tokens)...
+❌ Error: Core engine error: Model error [MODEL_ERROR]: No model loaded
+
+📊 Summary:
+- SIMD: Disabled
+- Model: Granite 3.3B-8B Q4_K_M
+- Optimizations: Memory Pool + Lazy Loading + GQA
+
+📈 Comparison:
+- Ollama (llama.cpp): 0.6-1.2 tokens/sec
+- Woolly Target: 5-10x improvement (3-12 tokens/sec)

@@ -62,8 +62,11 @@ impl SentencePieceTokenizer {
         // This would involve parsing the protobuf format and extracting
         // vocabulary and piece information
         
-        Err(CoreError::Tokenizer(
-            "SentencePiece model loading not yet implemented".to_string()
+        Err(CoreError::tokenizer(
+            "SENTENCEPIECE_NOT_IMPLEMENTED",
+            "SentencePiece model loading not yet implemented",
+            "SentencePiece tokenizer initialization",
+            "Use BPE tokenizer or implement SentencePiece support"
         ))
     }
 
@@ -322,8 +325,8 @@ mod tests {
         let mut tokenizer = SentencePieceTokenizer::new(config).await.unwrap();
         
         // Add some test vocabulary
-        tokenizer.vocab.add_token("▁Hello".to_string(), 4);
-        tokenizer.vocab.add_token("▁world".to_string(), 5);
+        tokenizer.vocab.add_token("▁Hello", 4);
+        tokenizer.vocab.add_token("▁world", 5);
         
         let text = "Hello world";
         let pieces = tokenizer.tokenize_to_pieces(text);
@@ -338,7 +341,7 @@ mod tests {
         let config = TokenizerConfig::default();
         let tokenizer = SentencePieceTokenizer::new(config).await.unwrap();
         
-        let pieces = vec!["▁Hello".to_string(), "▁world".to_string()];
+        let pieces = vec!["▁Hello", "▁world"];
         let decoded = tokenizer.decode_pieces(&pieces);
         
         assert_eq!(decoded, "Hello world");

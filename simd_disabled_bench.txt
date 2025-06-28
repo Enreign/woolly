@@ -1,0 +1,107 @@
+warning: unused doc comment
+  --> crates/woolly-tensor/src/ops/simd_optimized.rs:58:1
+   |
+58 | /// Thread-local buffer pool for SIMD operations
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ rustdoc does not generate documentation for macro invocations
+   |
+   = help: to document an item produced by a macro, the macro must produce the documentation as part of its expansion
+   = note: `#[warn(unused_doc_comments)]` on by default
+
+warning: type `CpuFeatures` is more private than the item `SimdOpsOptimized::cpu_features`
+   --> crates/woolly-tensor/src/ops/simd_optimized.rs:772:5
+    |
+772 |     pub fn cpu_features() -> &'static CpuFeatures {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ associated function `SimdOpsOptimized::cpu_features` is reachable at visibility `pub`
+    |
+note: but type `CpuFeatures` is only usable at visibility `pub(self)`
+   --> crates/woolly-tensor/src/ops/simd_optimized.rs:27:1
+    |
+27  | struct CpuFeatures {
+    | ^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(private_interfaces)]` on by default
+
+warning: associated function `gemm_micro_kernel_nn` is never used
+   --> crates/woolly-tensor/src/ops/matmul.rs:262:8
+    |
+36  | impl Gemm {
+    | --------- associated function in this implementation
+...
+262 |     fn gemm_micro_kernel_nn(
+    |        ^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: associated function `compute_scalar` is never used
+   --> crates/woolly-tensor/src/ops/simd_matmul.rs:432:8
+    |
+39  | impl SimdMatVec {
+    | --------------- associated function in this implementation
+...
+432 |     fn compute_scalar(
+    |        ^^^^^^^^^^^^^^
+
+warning: associated functions `dot_product_scalar_block` and `saxpy_scalar_block` are never used
+   --> crates/woolly-tensor/src/ops/simd_matmul.rs:726:8
+    |
+504 | impl CacheAwareMatVec {
+    | --------------------- associated functions in this implementation
+...
+726 |     fn dot_product_scalar_block(a: &[f32], b: &[f32]) -> f32 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+...
+797 |     fn saxpy_scalar_block(alpha: f32, x: &[f32], y: &mut [f32]) {
+    |        ^^^^^^^^^^^^^^^^^^
+
+warning: associated functions `sum_of_squares_scalar`, `normalize_and_scale_scalar`, and `swiglu_scalar` are never used
+    --> crates/woolly-tensor/src/ops/simd_matmul.rs:915:8
+     |
+809  | impl TransformerSIMD {
+     | -------------------- associated functions in this implementation
+...
+915  |     fn sum_of_squares_scalar(input: &[f32]) -> f32 {
+     |        ^^^^^^^^^^^^^^^^^^^^^
+...
+995  |     fn normalize_and_scale_scalar(input: &[f32], weight: &[f32], scale: f32, output: &mut [f32]) {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1111 |     fn swiglu_scalar(gate: &[f32], up: &[f32], output: &mut [f32]) {
+     |        ^^^^^^^^^^^^^
+
+warning: method `return_buffer` is never used
+   --> crates/woolly-tensor/src/ops/simd_optimized.rs:113:8
+    |
+73  | impl SimdBufferPool {
+    | ------------------- method in this implementation
+...
+113 |     fn return_buffer(&mut self, mut buffer: Vec<f32>) {
+    |        ^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/woolly-tensor/src/ops/simd_optimized.rs:137:5
+    |
+137 |     pub transpose: bool,
+    |     ^^^^^^^^^^^^^^^^^^^
+    |
+note: the lint level is defined here
+   --> crates/woolly-tensor/src/lib.rs:40:9
+    |
+40  | #![warn(missing_docs)]
+    |         ^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/woolly-tensor/src/ops/simd_optimized.rs:138:5
+    |
+138 |     pub alpha: f32,
+    |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+   --> crates/woolly-tensor/src/ops/simd_optimized.rs:139:5
+    |
+139 |     pub beta: f32,
+    |     ^^^^^^^^^^^^^
+
+warning: `woolly-tensor` (lib) generated 10 warnings
+    Finished `bench` profile [optimized] target(s) in 0.09s
+     Running benches/simd_benchmarks.rs (/Users/ssh/Documents/Code/ai-inference/woolly/target/release/deps/simd_benchmarks-2174a19e559d13ae)
+error: Unrecognized option: 'warm-up-time'
+error: bench failed, to rerun pass `--bench simd_benchmarks`

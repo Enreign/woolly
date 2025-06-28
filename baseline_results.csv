@@ -1,0 +1,11 @@
+max_tokens,time_seconds,generated_chars
+10,./measure_baseline_performance.sh: line 77: 4: Bad file descriptor
+0.005,       0
+20,./measure_baseline_performance.sh: line 77: 4: Bad file descriptor
+0.004,       0
+50,./measure_baseline_performance.sh: line 77: 4: Bad file descriptor
+0.003,       0
+100,./measure_baseline_performance.sh: line 77: 4: Bad file descriptor
+0.003,       0
+200,./measure_baseline_performance.sh: line 77: 4: Bad file descriptor
+0.003,       0

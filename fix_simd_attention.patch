@@ -1,0 +1,11 @@
+--- Fix for SIMD attention to use BLAS ---
+
+The issue is that compute_simd_gqa_attention has manual nested loops for attention computation.
+Instead of fixing indentation line by line, we should replace the entire attention computation 
+with a call to our BLAS implementation.
+
+The key change is to replace the manual loops (lines ~940-1040) with:
+1. A call to grouped_query_attention_blas when BLAS is available
+2. Keep the manual loops only as a fallback
+
+This will ensure SIMD path uses BLAS for attention, not just for final output projection.

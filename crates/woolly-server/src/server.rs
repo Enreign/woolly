@@ -23,7 +23,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::{info, warn};
-use woolly_core::{engine::InferenceEngine, config::EngineConfig};
+use woolly_core::engine::InferenceEngine;
 
 /// Main server state
 #[derive(Clone)]
@@ -48,8 +48,8 @@ impl WoollyServer {
     pub fn new(config: ServerConfig) -> ServerResult<Self> {
         let config = Arc::new(config);
         
-        // Initialize inference engine
-        let engine_config = EngineConfig::default(); // TODO: Make configurable
+        // Initialize inference engine with configuration
+        let engine_config = config.engine.clone();
         let inference_engine = Arc::new(tokio::sync::RwLock::new(InferenceEngine::new(engine_config)));
         
         // Initialize authentication
@@ -97,6 +97,7 @@ impl WoollyServer {
             .route("/models/:model_name", get(handlers::models::get_model_info))
             .route("/models/:model_name/load", post(handlers::models::load_model))
             .route("/models/:model_name/unload", post(handlers::models::unload_model))
+            .route("/debug/engine", get(handlers::models::debug_engine_state))
             
             // Inference endpoints
             .route("/inference/complete", post(handlers::inference::complete))

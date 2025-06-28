@@ -1,0 +1,68 @@
+{
+  "woolly": {
+    "host": "localhost",
+    "port": 3001,
+    "api_key": null,
+    "timeout": 600,
+    "request_timeout": 300,
+    "inference_timeout": 300
+  },
+  "models": [
+    {
+      "name": "granite-3.3-8b-instruct-Q4_K_M",
+      "path": "models/granite-3.3-8b-instruct-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "loaded": true
+    }
+  ],
+  "tests": {
+    "inference_speed": {
+      "enabled": true,
+      "prompts": [
+        "Hi"
+      ],
+      "max_tokens": [1, 5],
+      "batch_sizes": [1]
+    },
+    "resource_utilization": {
+      "enabled": true,
+      "sample_interval": 1.0,
+      "duration": 30
+    },
+    "model_loading": {
+      "enabled": true,
+      "iterations": 1,
+      "measure_memory": true,
+      "timeout": 600
+    },
+    "quality_validation": {
+      "enabled": true,
+      "consistency_runs": 2,
+      "temperature": 0.0,
+      "timeout": 300
+    },
+    "load_testing": {
+      "enabled": false,
+      "concurrent_users": [1],
+      "duration": 30,
+      "ramp_up_time": 5
+    },
+    "comparative": {
+      "enabled": false,
+      "compare_with": ["llama.cpp", "ollama"],
+      "metrics": ["throughput", "latency", "memory"]
+    },
+    "reliability": {
+      "enabled": false,
+      "duration": 300,
+      "check_interval": 30,
+      "memory_leak_detection": true
+    }
+  },
+  "reporting": {
+    "output_dir": "validation_results",
+    "generate_html": true,
+    "generate_pdf": true,
+    "include_graphs": true
+  }
+}

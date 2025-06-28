@@ -9,6 +9,8 @@ use crate::tensor_utils::{
 use async_trait::async_trait;
 use std::path::Path;
 use woolly_tensor::Shape;
+use rayon::prelude::*;
+use std::sync::Arc;
 
 use super::attention::{MultiHeadAttention, AttentionConfig};
 use super::embedding::{TokenEmbedding, RotaryEmbedding, SinusoidalPositionEmbedding};
@@ -34,6 +36,10 @@ pub struct TransformerConfig {
     pub dropout: f32,
     /// Attention dropout probability
     pub attention_dropout: f32,
+    /// Whether to use KV cache for faster generation
+    pub use_kv_cache: bool,
+    /// Whether to preload all weights during model loading
+    pub preload_weights: bool,
 }
 
 impl Default for TransformerConfig {
@@ -47,6 +53,8 @@ impl Default for TransformerConfig {
             pre_norm: true,
             dropout: 0.1,
             attention_dropout: 0.1,
+            use_kv_cache: true,
+            preload_weights: true,
         }
     }
 }
@@ -221,6 +229,30 @@ pub struct TransformerModel {
 }
 
 impl TransformerModel {
+    /// Process multiple input sequences in parallel for improved throughput
+    pub async fn forward_batch(
+        &self,
+        input_batch: &[&[u32]],
+        past_kv_cache_batch: Option<&[Option<&(dyn std::any::Any + Send + Sync)>]>,
+    ) -> Result<Vec<Vec<f32>>> {
+        // Process each sequence in the batch in parallel
+        let results: Result<Vec<_>> = input_batch
+            .par_iter()
+            .enumerate()
+            .map(|(idx, input_ids)| {
+                let past_kv = if let Some(cache_batch) = past_kv_cache_batch {
+                    cache_batch.get(idx).unwrap_or(&None).as_ref().copied()
+                } else {
+                    None
+                };
+                
+                self.forward(input_ids)
+            })
+            .collect();
+        
+        results
+    }
+
     /// Create a new transformer model
     pub fn new(config: TransformerConfig) -> Self {
         let embeddings = TokenEmbedding::new(
@@ -295,7 +327,8 @@ impl TransformerModel {
 
             let embed_weights = self.embeddings.weights();
 
-            for b in 0..batch_size {
+            // Parallel computation of logits
+            logits.par_chunks_mut(vocab_size).enumerate().for_each(|(b, batch_logits)| {
                 for v in 0..vocab_size {
                     let mut sum = 0.0;
                     for h in 0..hidden_size {
@@ -303,16 +336,15 @@ impl TransformerModel {
                         let embed_idx = v * hidden_size + h;
                         sum += hidden_states[hidden_idx] * embed_weights[embed_idx];
                     }
-                    logits[b * vocab_size + v] = sum;
+                    batch_logits[v] = sum;
                 }
-            }
+            });
 
             Ok(logits)
         }
     }
 }
 
-#[async_trait]
 impl Model for TransformerModel {
     fn name(&self) -> &str {
         "TransformerModel"
@@ -342,11 +374,10 @@ impl Model for TransformerModel {
         self.config.model_config.num_heads
     }
 
-    async fn forward(
+    fn forward(
         &self,
         input_ids: &[u32],
-        past_kv_cache: Option<&(dyn std::any::Any + Send + Sync)>,
-    ) -> Result<ModelOutput> {
+    ) -> Result<Vec<f32>> {
         let seq_len = input_ids.len();
         
         // Get embeddings using tensor operations
@@ -366,11 +397,14 @@ impl Model for TransformerModel {
             hidden_states = tensor_from_slice(&hidden_data, hidden_states.shape().clone())?;
         }
 
-        // Process through layers
+        // Process through layers with potential parallelization for batch processing
         let mut all_kv_cache = Vec::new();
         
+        // For now, we process layers sequentially due to dependencies, but parallelize within layers
+        // Future enhancement: implement true pipeline parallelism for independent sequences
         for (layer_idx, layer) in self.layers.iter().enumerate() {
-            let past_kv = if let Some(cache) = past_kv_cache {
+            let past_kv = None; // KV cache removed from simplified interface
+            /*if let Some(cache) = past_kv_cache {
                 if let Some(kv_cache) = cache.downcast_ref::<KVCache>() {
                     if layer_idx < kv_cache.keys.len() {
                         Some((kv_cache.keys[layer_idx].as_slice(), kv_cache.values[layer_idx].as_slice()))
@@ -382,7 +416,7 @@ impl Model for TransformerModel {
                 }
             } else {
                 None
-            };
+            };*/
 
             // Convert tensor to vec for layer processing (temporary until layers are tensorized)
             let hidden_data = hidden_states.to_vec();
@@ -415,7 +449,12 @@ impl Model for TransformerModel {
             if let Some(ref embedding_weights) = self.embedding_weights {
                 // Transpose embedding weights for tied head: hidden_states @ embed_weights^T
                 let embed_transposed = embedding_weights.transpose(&[1, 0])
-                    .map_err(|e| CoreError::Tensor(format!("Failed to transpose embeddings: {}", e)))?;
+                    .map_err(|e| CoreError::tensor(
+                        "TENSOR_TRANSPOSE_FAILED", 
+                        format!("Failed to transpose embeddings: {}", e),
+                        "Transposing embedding weights for tied language model head",
+                        "Check tensor operations and memory availability"
+                    ))?;
                 matmul(&hidden_states, &embed_transposed)?
             } else {
                 // Fallback to legacy method
@@ -439,27 +478,9 @@ impl Model for TransformerModel {
             None
         };
 
-        Ok(ModelOutput {
-            logits,
-            logits_shape: vec![1, seq_len, self.vocab_size()],
-            past_kv_cache: new_cache,
-            hidden_states: None,
-            attentions: None,
-        })
+        Ok(logits)
     }
 
-    async fn load_weights(&mut self, path: &Path) -> Result<()> {
-        use super::loader::{GGUFModelLoader, ModelLoader, load_transformer_weights};
-        
-        // Load using GGUF loader
-        let loader = GGUFModelLoader::from_path(path)?;
-        let weights = load_transformer_weights(&loader, &self.config.model_config)?;
-        
-        // Load weights into the model components
-        self.load_weights_from_model_weights(weights)?;
-        
-        Ok(())
-    }
 
 }
 
@@ -471,15 +492,18 @@ impl TransformerModel {
         self.embedding_weights = Some(tensor_from_slice(&weights.embeddings, Shape::from_slice(shape))?);
         
         // Also load into legacy embedding for backward compatibility
-        self.embeddings.load_weights(&weights.embeddings, &weights.embedding_shape)?;
+        // GGUF stores as [hidden_size, vocab_size] but embeddings expects [vocab_size, hidden_size]
+        let swapped_shape = vec![weights.embedding_shape[1], weights.embedding_shape[0]];
+        self.embeddings.load_weights(&weights.embeddings, &swapped_shape)?;
         
         // Load layer weights
         if weights.layers.len() != self.layers.len() {
-            return Err(CoreError::Model(format!(
-                "Weight layer count {} doesn't match model layer count {}",
-                weights.layers.len(),
-                self.layers.len()
-            )));
+            return Err(CoreError::model(
+                "LAYER_COUNT_MISMATCH",
+                format!("Weight layer count {} doesn't match model layer count {}", weights.layers.len(), self.layers.len()),
+                "Loading transformer layer weights",
+                "Check that the model weights match the expected architecture"
+            ));
         }
         
         for (layer_idx, layer_weights) in weights.layers.iter().enumerate() {
@@ -495,8 +519,11 @@ impl TransformerModel {
                 (&weights.lm_head, &weights.lm_head_shape) {
                 lm_head.load_weights(lm_head_weights, lm_head_shape)?;
             } else if !self.config.tie_embeddings {
-                return Err(CoreError::Model(
-                    "LM head weights not found but model not configured for tied embeddings".to_string()
+                return Err(CoreError::model(
+                    "MODEL_LM_HEAD_WEIGHTS_MISSING",
+                    "LM head weights not found but model not configured for tied embeddings",
+                    "Transformer model weight loading",
+                    "Either provide LM head weights or enable tied embeddings in the model configuration"
                 ));
             }
         }
@@ -631,33 +658,42 @@ impl Linear {
     fn load_weights(&mut self, weights: &[f32], shape: &[usize]) -> Result<()> {
         // Validate shape
         if shape.len() != 2 {
-            return Err(CoreError::InvalidInput(format!(
-                "Expected 2D weight shape, got {}D", shape.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "INVALID_WEIGHT_SHAPE",
+                format!("Expected 2D weight shape, got {}D", shape.len()),
+                "Loading Linear layer weights",
+                "Check that the weight tensor has the correct dimensions"
+            ));
         }
 
         let expected_out_features = shape[0];
         let expected_in_features = shape[1];
         
         if expected_out_features != self.out_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Output features mismatch: expected {}, got {}", 
-                self.out_features, expected_out_features
-            )));
+            return Err(CoreError::invalid_input(
+                "WEIGHT_OUTPUT_MISMATCH",
+                format!("Output features mismatch: expected {}, got {}", self.out_features, expected_out_features),
+                "Validating Linear layer output dimensions",
+                "Check that the weight tensor matches the layer configuration"
+            ));
         }
         
         if expected_in_features != self.in_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Input features mismatch: expected {}, got {}", 
-                self.in_features, expected_in_features
-            )));
+            return Err(CoreError::invalid_input(
+                "WEIGHT_INPUT_MISMATCH",
+                format!("Input features mismatch: expected {}, got {}", self.in_features, expected_in_features),
+                "Validating Linear layer input dimensions",
+                "Check that the weight tensor matches the layer configuration"
+            ));
         }
 
         if weights.len() != self.out_features * self.in_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Weight size mismatch: expected {}, got {}", 
-                self.out_features * self.in_features, weights.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "WEIGHT_SIZE_MISMATCH",
+                format!("Weight size mismatch: expected {}, got {}", self.out_features * self.in_features, weights.len()),
+                "Validating Linear layer weight data size",
+                "Check that the weight tensor has the correct number of elements"
+            ));
         }
 
         // Copy weights - note the transpose from [out_features, in_features] to [in_features, out_features]
@@ -678,10 +714,16 @@ impl Linear {
 
 fn add_vectors(a: &[f32], b: &[f32]) -> Result<Vec<f32>> {
     if a.len() != b.len() {
-        return Err(CoreError::InvalidInput("Vector lengths must match".to_string()));
+        return Err(CoreError::invalid_input(
+            "VECTOR_LENGTH_MISMATCH", 
+            "Vector lengths must match", 
+            "Adding two vectors element-wise",
+            "Check that both input vectors have the same length"
+        ));
     }
     
-    Ok(a.iter().zip(b.iter()).map(|(x, y)| x + y).collect())
+    // Parallel vector addition
+    Ok(a.par_iter().zip(b.par_iter()).map(|(x, y)| x + y).collect())
 }
 
 #[cfg(test)]

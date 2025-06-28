@@ -4,6 +4,7 @@
 //! and vice versa, supporting various tokenization algorithms like SentencePiece and BPE.
 
 pub mod bpe;
+pub mod gguf_tokenizer;
 pub mod sentencepiece;
 pub mod vocab;
 
@@ -115,13 +116,15 @@ pub enum TokenizerType {
     SentencePiece,
     /// WordPiece tokenizer
     WordPiece,
+    /// GGUF-based tokenizer
+    GGUF,
 }
 
 /// Factory function to create a tokenizer based on type
 pub async fn create_tokenizer(
     tokenizer_type: TokenizerType,
     config: TokenizerConfig,
-) -> Result<Box<dyn Tokenizer>> {
+) -> Result<Box<dyn Tokenizer + Send + Sync>> {
     match tokenizer_type {
         TokenizerType::BPE => {
             let tokenizer = bpe::BPETokenizer::new(config).await?;
@@ -133,6 +136,19 @@ pub async fn create_tokenizer(
         }
         TokenizerType::WordPiece => {
             todo!("WordPiece tokenizer not yet implemented")
+        }
+        TokenizerType::GGUF => {
+            if let Some(model_path) = &config.model_path {
+                let tokenizer = gguf_tokenizer::GGUFTokenizer::from_gguf_file(model_path, config.clone()).await?;
+                Ok(Box::new(tokenizer))
+            } else {
+                return Err(crate::CoreError::tokenizer(
+                    "GGUF_PATH_REQUIRED",
+                    "GGUF tokenizer requires model_path in config",
+                    "Creating GGUF tokenizer",
+                    "Provide the path to a GGUF model file in the tokenizer config"
+                ));
+            }
         }
     }
 }

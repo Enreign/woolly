@@ -1,0 +1,211 @@
+🔍 Testing SIMD Performance Impact
+==================================
+
+Test: simd_enabled
+--------------
+./test_simd_impact.sh: line 25: !: command not found
+Loading model...
+-n Waiting for model
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+
+Testing inference...
+❌ Inference failed
+Response: {"error":{"code":400,"details":{"component":"model_loading","error_code":"MODEL_ERROR"},"message":"Core engine error: Model error [MODEL_ERROR]: No model loaded
+Context: 
+Suggestion: Check model configuration","request_id":"req_197b7f1b8b2","suggestion":"Check model file path and format","timestamp":1751137761,"type":"model_error"}}
+
+Test: simd_disabled
+--------------
+./test_simd_impact.sh: line 8: 41597 Terminated: 15          ./target/release/woolly-server > simd_enabled_server.log 2>&1
+./test_simd_impact.sh: line 25: !: command not found
+Loading model...
+-n Waiting for model
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+-n .
+
+Testing inference...
+❌ Inference failed
+Response: {"error":{"code":400,"details":{"component":"model_loading","error_code":"MODEL_ERROR"},"message":"Core engine error: Model error [MODEL_ERROR]: No model loaded
+Context: 
+Suggestion: Check model configuration","request_id":"req_197b7f33f4f","suggestion":"Check model file path and format","timestamp":1751137861,"type":"model_error"}}
+
+📊 Summary
+==========
+Tests incomplete - check logs for errors

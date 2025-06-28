@@ -4,15 +4,31 @@ pub mod attention;
 pub mod embedding;
 pub mod feedforward;
 pub mod layer_norm;
+pub mod lazy_loader;
+pub mod lazy_transformer;
 pub mod loader;
 pub mod transformer;
+pub mod memory_pool;
+pub mod memory_pool_benchmark;
+pub mod memory_pool_enhanced;
+pub mod optimized_transformer;
+pub mod dequantization_cache;
+pub mod fused_kernels;
+pub mod fused_transformer;
+pub mod fused_benchmark;
+pub mod parallel_config;
+// pub mod ultra_optimized_transformer;
+// pub mod fast_initialization;
+// pub mod fast_transformer;
+
+#[cfg(test)]
+mod dequantization_cache_test;
 
 use crate::{CoreError, Result};
 use async_trait::async_trait;
 use std::path::Path;
 
 /// Core trait for language models
-#[async_trait]
 pub trait Model: Send + Sync {
     /// Get the model name
     fn name(&self) -> &str;
@@ -36,11 +52,8 @@ pub trait Model: Send + Sync {
     fn num_heads(&self) -> usize;
 
     /// Forward pass through the model
-    /// Returns logits as a flattened vector
-    async fn forward(&self, input_ids: &[u32], past_kv_cache: Option<&(dyn std::any::Any + Send + Sync)>) -> Result<ModelOutput>;
-
-    /// Initialize model weights from a file
-    async fn load_weights(&mut self, path: &Path) -> Result<()>;
+    /// Returns logits for the last token only (for generation)
+    fn forward(&self, input_ids: &[u32]) -> Result<Vec<f32>>;
 
     /// Check if the model supports a specific feature
     fn supports_feature(&self, feature: ModelFeature) -> bool {
@@ -98,7 +111,12 @@ impl KVCache {
     /// Update cache with new key-value pairs
     pub fn update(&mut self, layer_idx: usize, new_keys: Vec<f32>, new_values: Vec<f32>, shape: Vec<usize>) -> Result<()> {
         if layer_idx >= self.keys.capacity() {
-            return Err(CoreError::Cache(format!("Invalid layer index: {}", layer_idx)));
+            return Err(CoreError::cache(
+                "INVALID_LAYER_INDEX",
+                format!("Invalid layer index: {}", layer_idx),
+                "Storing key-value cache for layer",
+                "Check that the layer index is within the valid range"
+            ));
         }
 
         // For now, just store the flattened data

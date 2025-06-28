@@ -113,7 +113,7 @@ impl Default for InferenceConfig {
             top_p: 0.9,
             top_k: 40,
             repetition_penalty: 1.1,
-            context_size: 4096,
+            context_size: 131072, // Support Granite model's 131k context
             num_threads: None,
             device: DeviceConfig::default(),
         }

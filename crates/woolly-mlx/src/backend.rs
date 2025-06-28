@@ -8,8 +8,9 @@ use std::ops::{Add, Div, Mul, Sub};
 use tracing::{debug, info, trace, warn};
 
 use woolly_tensor::backend::{
-    DType, Device as TensorDevice, QuantizationScheme, TensorBackend, TensorError, Result as TensorResult,
+    DType, Device as TensorDevice, TensorBackend, TensorError, Result as TensorResult,
 };
+use woolly_tensor::quantization::QuantizationScheme;
 use woolly_tensor::shape::Shape;
 
 use crate::device::{Device, MLXDevice};

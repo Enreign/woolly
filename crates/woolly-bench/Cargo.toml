@@ -36,6 +36,18 @@ harness = false
 name = "comparison"
 harness = false
 
+[[bench]]
+name = "simd_optimization"
+harness = false
+
+[[bench]]
+name = "simd_optimized_benchmark"
+harness = false
+
+[[bench]]
+name = "comprehensive_simd_validation"
+harness = false
+
 [[bin]]
 name = "woolly-bench"
 path = "src/main.rs"

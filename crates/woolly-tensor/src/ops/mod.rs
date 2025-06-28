@@ -5,6 +5,8 @@ pub mod binary;
 pub mod reduce;
 pub mod matmul;
 pub mod simd;
+pub mod simd_matmul;
+pub mod simd_optimized;
 
 // Re-export commonly used operations
 pub use unary::*;
@@ -12,6 +14,8 @@ pub use binary::*;
 pub use reduce::*;
 pub use matmul::*;
 pub use simd::*;
+pub use simd_matmul::*;
+pub use simd_optimized::*;
 
 use crate::Result;
 use crate::backend::TensorBackend;

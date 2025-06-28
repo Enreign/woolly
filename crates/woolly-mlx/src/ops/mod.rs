@@ -12,6 +12,7 @@ pub mod shape_ops;
 use crate::backend::MLXBackend;
 use crate::error::Result;
 use crate::storage::MLXStorage;
+use woolly_tensor::backend::TensorStorage;
 
 /// Trait for MLX operations that can be performed on tensors
 pub trait MLXOperation {
@@ -43,6 +44,7 @@ pub mod utils {
     use crate::device::Device;
     use crate::error::{MLXError, Result};
     use crate::storage::MLXStorage;
+    use woolly_tensor::backend::TensorStorage;
     use woolly_tensor::shape::Shape;
     use tracing::trace;
     

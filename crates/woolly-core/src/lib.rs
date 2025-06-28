@@ -5,14 +5,24 @@
 
 // Module declarations
 pub mod config;
+pub mod cpu_features;
+pub mod optimized_dequantization;
+pub mod aligned_memory_pool;
+pub mod blas_matmul;
+pub mod blas_attention;
 pub mod engine;
+pub mod generation;
 pub mod kv_cache;
 pub mod model;
 pub mod model_cache;
 pub mod session;
 pub mod tokenizer;
 pub mod tensor_utils;
+pub mod tensor_utils_optimized;
+pub mod tensor_utils_simd;
+pub mod integration_test;
 pub mod validation;
+pub mod hyper_optimized_engine;
 
 use thiserror::Error;
 
@@ -319,6 +329,114 @@ impl CoreError {
         }
     }
 
+    /// Create a tokenizer error with context
+    pub fn tokenizer<S1, S2, S3>(
+        code: &'static str,
+        message: S1,
+        context: S2,
+        suggestion: S3,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        Self::Tokenizer {
+            code,
+            message: message.into(),
+            context: context.into(),
+            suggestion: suggestion.into(),
+            tokenizer_type: None,
+        }
+    }
+
+    /// Create a generation error with context
+    pub fn generation<S1, S2, S3>(
+        code: &'static str,
+        message: S1,
+        context: S2,
+        suggestion: S3,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        Self::Generation {
+            code,
+            message: message.into(),
+            context: context.into(),
+            suggestion: suggestion.into(),
+            session_id: None,
+        }
+    }
+
+    /// Create a cache error with context
+    pub fn cache<S1, S2, S3>(
+        code: &'static str,
+        message: S1,
+        context: S2,
+        suggestion: S3,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        Self::Cache {
+            code,
+            message: message.into(),
+            context: context.into(),
+            suggestion: suggestion.into(),
+            cache_size: None,
+            available_memory: None,
+        }
+    }
+
+    /// Create a context error with details
+    pub fn context<S1, S2, S3>(
+        code: &'static str,
+        message: S1,
+        context: S2,
+        suggestion: S3,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        Self::Context {
+            code,
+            message: message.into(),
+            context: context.into(),
+            suggestion: suggestion.into(),
+            current_length: None,
+            max_length: None,
+        }
+    }
+
+    /// Create a device error with details
+    pub fn device<S1, S2, S3>(
+        code: &'static str,
+        message: S1,
+        context: S2,
+        suggestion: S3,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        Self::Device {
+            code,
+            message: message.into(),
+            context: context.into(),
+            suggestion: suggestion.into(),
+            device_type: None,
+            backend: None,
+        }
+    }
+
     /// Get the error code for programmatic handling
     pub fn code(&self) -> &'static str {
         match self {
@@ -414,30 +532,7 @@ pub mod context {
     }
 }
 
-pub mod generation {
-    #[derive(Debug, Clone)]
-    pub struct GenerationConfig {
-        pub max_tokens: usize,
-        pub temperature: f32,
-        pub top_p: f32,
-        pub top_k: usize,
-        pub repetition_penalty: f32,
-    }
-    
-    #[derive(Debug, Clone)]
-    pub struct GenerationResult {
-        pub tokens: Vec<u32>,
-        pub text: String,
-        pub finish_reason: FinishReason,
-    }
-    
-    #[derive(Debug, Clone, Copy)]
-    pub enum FinishReason {
-        MaxTokens,
-        StopToken,
-        EosToken,
-    }
-}
+// Generation module is defined in generation.rs
 
 pub mod sampler {
     pub trait Sampler {

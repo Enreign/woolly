@@ -1,0 +1,1 @@
+{"error":{"code":400,"details":{"component":"model_loading","error_code":"MODEL_ERROR"},"message":"Core engine error: Model error [MODEL_ERROR]: No model loaded\nContext: \nSuggestion: Check model configuration","request_id":"req_197b3343fff","suggestion":"Check model file path and format","timestamp":1751058235,"type":"model_error"}}

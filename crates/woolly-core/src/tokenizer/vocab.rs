@@ -89,13 +89,12 @@ impl Vocabulary {
     /// Format: one token per line, ID is the line number
     pub fn from_file(path: &Path) -> Result<Self> {
         let file = File::open(path).map_err(|e| {
-            CoreError::Tokenizer {
-                code: "TOKENIZER_VOCAB_FILE_OPEN_ERROR",
-                message: format!("Failed to open vocabulary file: {}", e),
-                context: "vocabulary file loading".to_string(),
-                suggestion: "Check file path and permissions".to_string(),
-                tokenizer_type: Some("vocabulary".to_string()),
-            }
+            CoreError::tokenizer(
+                "TOKENIZER_VOCAB_FILE_OPEN_ERROR",
+                format!("Failed to open vocabulary file: {}", e),
+                "vocabulary file loading",
+                "Check file path and permissions"
+            )
         })?;
 
         let reader = BufReader::new(file);
@@ -103,13 +102,12 @@ impl Vocabulary {
 
         for (idx, line) in reader.lines().enumerate() {
             let token = line.map_err(|e| {
-                CoreError::Tokenizer {
-                    code: "TOKENIZER_VOCAB_LINE_READ_ERROR",
-                    message: format!("Failed to read vocabulary line: {}", e),
-                    context: "vocabulary file parsing".to_string(),
-                    suggestion: "Check file format and encoding".to_string(),
-                    tokenizer_type: Some("vocabulary".to_string()),
-                }
+                CoreError::tokenizer(
+                    "TOKENIZER_VOCAB_LINE_READ_ERROR",
+                    format!("Failed to read vocabulary line: {}", e),
+                    "vocabulary file parsing",
+                    "Check file format and encoding"
+                )
             })?;
 
             let id = idx as u32;
@@ -122,13 +120,12 @@ impl Vocabulary {
     /// Load vocabulary from JSON format
     pub fn from_json(json_str: &str) -> Result<Self> {
         let token_map: HashMap<String, u32> = serde_json::from_str(json_str)
-            .map_err(|e| CoreError::Tokenizer {
-                code: "TOKENIZER_VOCAB_JSON_PARSE_ERROR",
-                message: format!("Failed to parse JSON vocabulary: {}", e),
-                context: "JSON vocabulary file parsing".to_string(),
-                suggestion: "Check JSON format and syntax".to_string(),
-                tokenizer_type: Some("vocabulary".to_string()),
-            })?;
+            .map_err(|e| CoreError::tokenizer(
+                "TOKENIZER_VOCAB_JSON_PARSE_ERROR",
+                format!("Failed to parse JSON vocabulary: {}", e),
+                "JSON vocabulary file parsing",
+                "Check JSON format and syntax"
+            ))?;
 
         let mut vocab = Self::new();
         for (token, id) in token_map {

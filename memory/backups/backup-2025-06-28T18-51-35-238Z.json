@@ -1,0 +1,134 @@
+{
+  "timestamp": "2025-06-28T18:51:35.238Z",
+  "version": "1.0",
+  "entries": [
+    {
+      "id": "entry_mcglkm8h_wg76immf6",
+      "key": "woolly_current_performance",
+      "value": "Current: 0.13 tokens/sec (77s per token). Target: >15 tokens/sec. Gap: 115x slower. Main bottleneck: GGUF dequantization taking 90+ seconds per layer access. SIMD implementation broken and makes performance 5.3x worse.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:30.833Z",
+      "updatedAt": "2025-06-28T18:51:30.833Z",
+      "lastAccessedAt": "2025-06-28T18:51:30.833Z",
+      "version": 1,
+      "size": 249,
+      "compressed": false,
+      "checksum": "cbb53f709b742e28cc9ee9e6157f9383fba5723874eef61d6914eb12dd46dbfa",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcglko0x_p1dxk1mlc",
+      "key": "woolly_architecture",
+      "value": "Modular workspace with 7 crates. Key issues: Over-engineered with 6+ transformer variants, disabled MLX backend, mixed optimization levels. Strengths: Comprehensive SIMD support, advanced memory pooling, flexible eviction policies.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:33.153Z",
+      "updatedAt": "2025-06-28T18:51:33.153Z",
+      "lastAccessedAt": "2025-06-28T18:51:33.153Z",
+      "version": 1,
+      "size": 262,
+      "compressed": false,
+      "checksum": "f4bb10e5ac3f5edc580c4ca71e44237fe23143b40d0d5b3f0d4314e85b0e7910",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcglkpmt_hrwxpzojz",
+      "key": "woolly_vs_llama_cpp",
+      "value": "Llama.cpp advantages: Flash Attention, optimized micro-kernels, better cache utilization, direct quantized ops, hand-tuned assembly. Woolly missing: kernel fusion, specialized kernels, efficient memory layout.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:35.237Z",
+      "updatedAt": "2025-06-28T18:51:35.237Z",
+      "lastAccessedAt": "2025-06-28T18:51:35.237Z",
+      "version": 1,
+      "size": 240,
+      "compressed": false,
+      "checksum": "271c26e709dccba8311700575cc7592a8892874210b1b8018d07bf8ab1402d19",
+      "references": [],
+      "dependencies": []
+    }
+  ],
+  "statistics": {
+    "overview": {
+      "totalEntries": 3,
+      "totalSize": 751,
+      "compressedEntries": 0,
+      "compressionRatio": 1,
+      "indexSize": 150,
+      "memoryUsage": 9360704,
+      "diskUsage": 0
+    },
+    "distribution": {
+      "byNamespace": {
+        "default": {
+          "count": 3,
+          "size": 751
+        }
+      },
+      "byType": {
+        "string": {
+          "count": 3,
+          "size": 751
+        }
+      },
+      "byOwner": {
+        "system": {
+          "count": 3,
+          "size": 751
+        }
+      },
+      "byAccessLevel": {
+        "shared": {
+          "count": 3,
+          "size": 751
+        }
+      }
+    },
+    "temporal": {
+      "entriesCreatedLast24h": 3,
+      "entriesUpdatedLast24h": 3,
+      "entriesAccessedLast24h": 3,
+      "oldestEntry": "2025-06-28T18:51:30.833Z",
+      "newestEntry": "2025-06-28T18:51:35.237Z"
+    },
+    "performance": {
+      "averageQueryTime": 0,
+      "averageWriteTime": 0,
+      "cacheHitRatio": 0,
+      "indexEfficiency": 0.95
+    },
+    "health": {
+      "expiredEntries": 0,
+      "orphanedReferences": 0,
+      "duplicateKeys": 0,
+      "corruptedEntries": 0,
+      "recommendedCleanup": false
+    },
+    "optimization": {
+      "suggestions": [],
+      "potentialSavings": {
+        "compression": 0,
+        "cleanup": 0,
+        "deduplication": 0
+      },
+      "indexOptimization": [
+        "Consider periodic index rebuilding for optimal performance"
+      ]
+    }
+  }
+}

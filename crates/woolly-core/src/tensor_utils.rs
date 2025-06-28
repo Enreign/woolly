@@ -4,7 +4,24 @@
 //! used throughout the transformer model implementation.
 
 use crate::{CoreError, Result};
+use crate::model::memory_pool::TensorMemoryPool;
+use crate::blas_matmul::{matmul_blas, is_blas_available};
 use woolly_tensor::{Shape, ops::matmul::{Gemm, MatMulConfig}};
+use std::sync::OnceLock;
+
+/// Check if SIMD is enabled (cached for performance)
+fn is_simd_enabled() -> bool {
+    static SIMD_ENABLED: OnceLock<bool> = OnceLock::new();
+    *SIMD_ENABLED.get_or_init(|| {
+        let simd_enabled = std::env::var("WOOLLY_DISABLE_SIMD")
+            .map(|v| v != "1" && v.to_lowercase() != "true")
+            .unwrap_or(true);
+        eprintln!("[WOOLLY INIT] SIMD enabled: {} (WOOLLY_DISABLE_SIMD={})", 
+            simd_enabled, 
+            std::env::var("WOOLLY_DISABLE_SIMD").unwrap_or("not set".to_string()));
+        simd_enabled
+    })
+}
 
 /// Simple tensor-like structure for now (will be replaced with real tensors later)
 #[derive(Debug, Clone)]
@@ -97,7 +114,124 @@ pub fn ones_tensor(shape: Shape) -> Result<SimpleTensor> {
     Ok(SimpleTensor::ones(shape))
 }
 
-/// Perform matrix multiplication using tensor operations
+/// Simple non-SIMD matrix multiplication for fallback
+fn matmul_simple(a: &SimpleTensor, b: &SimpleTensor) -> Result<SimpleTensor> {
+    // Validate shapes for matrix multiplication
+    if a.shape.ndim() != 2 || b.shape.ndim() != 2 {
+        return Err(CoreError::tensor(
+            "TENSOR_MATMUL_NON_2D",
+            "Matrix multiplication requires 2D tensors",
+            "simple matrix multiplication",
+            "Ensure both tensors are 2-dimensional"
+        ));
+    }
+    
+    let m = a.shape.as_slice()[0];
+    let k = a.shape.as_slice()[1];
+    let k2 = b.shape.as_slice()[0];
+    let n = b.shape.as_slice()[1];
+    
+    if k != k2 {
+        return Err(CoreError::tensor(
+            "TENSOR_MATMUL_DIM_MISMATCH",
+            format!("Matrix dimensions don't match for multiplication: {} != {}", k, k2),
+            "simple matrix multiplication",
+            "Ensure inner dimensions match for matrix multiplication"
+        ));
+    }
+    
+    // Simple naive matrix multiplication
+    let mut result = vec![0.0f32; m * n];
+    
+    for i in 0..m {
+        for j in 0..n {
+            let mut sum = 0.0f32;
+            for l in 0..k {
+                sum += a.data[i * k + l] * b.data[l * n + j];
+            }
+            result[i * n + j] = sum;
+        }
+    }
+    
+    tensor_from_slice(&result, Shape::matrix(m, n))
+}
+
+/// Perform matrix multiplication using tensor operations with memory pool
+pub fn matmul_with_pool(a: &SimpleTensor, b: &SimpleTensor, pool: &mut TensorMemoryPool) -> Result<SimpleTensor> {
+    // Validate shapes for matrix multiplication
+    if a.shape.ndim() != 2 || b.shape.ndim() != 2 {
+        return Err(CoreError::tensor(
+            "TENSOR_MATMUL_NON_2D",
+            "Matrix multiplication requires 2D tensors",
+            "matrix multiplication operation",
+            "Ensure both tensors are 2-dimensional"
+        ));
+    }
+    
+    let m = a.shape.as_slice()[0];
+    let k = a.shape.as_slice()[1];
+    let k2 = b.shape.as_slice()[0];
+    let n = b.shape.as_slice()[1];
+    
+    if k != k2 {
+        return Err(CoreError::tensor(
+            "TENSOR_MATMUL_DIM_MISMATCH",
+            format!("Matrix dimensions don't match for multiplication: {} != {}", k, k2),
+            "matrix multiplication operation",
+            "Ensure inner dimensions match for matrix multiplication"
+        ));
+    }
+    
+    // Check cache first
+    let cache_key = (m, n);
+    if let Some(cached_result) = pool.get_matmul_cache(cache_key) {
+        if cached_result.len() == m * n {
+            return tensor_from_slice(&cached_result, Shape::matrix(m, n));
+        }
+    }
+    
+    // Check if SIMD is disabled
+    if !is_simd_enabled() {
+        // Use simple non-SIMD implementation
+        eprintln!("\n[WOOLLY] SIMD DISABLED: Using simple matrix multiplication (WOOLLY_DISABLE_SIMD=1)");
+        eprintln!("[WOOLLY] Matrix dimensions: {}x{} * {}x{} = {}x{}", m, k, k2, n, m, n);
+        return matmul_simple(a, b);
+    }
+    
+    // Use buffer from pool
+    let mut result_data = pool.get_buffer(m * n);
+    
+    // Use the optimized matmul from woolly-tensor
+    Gemm::compute(
+        &a.data,
+        &b.data,
+        &mut result_data,
+        &a.shape,
+        &b.shape,
+        &MatMulConfig::default(),
+    ).map_err(|e| CoreError::tensor(
+        "TENSOR_MATMUL_OPERATION_FAILED",
+        format!("Matrix multiplication failed: {}", e),
+        "matrix multiplication operation",
+        "Check tensor dimensions and backend implementation"
+    ))?;
+    
+    // Cache the result for small matrices
+    if m * n < 16384 { // Cache results < 64KB
+        pool.cache_matmul_result(cache_key, result_data.clone());
+    }
+    
+    // Create result tensor
+    let result_shape = Shape::matrix(m, n);
+    let result = tensor_from_slice(&result_data, result_shape)?;
+    
+    // Return buffer to pool
+    pool.return_buffer(result_data);
+    
+    Ok(result)
+}
+
+/// Perform matrix multiplication using tensor operations (fallback)
 pub fn matmul(a: &SimpleTensor, b: &SimpleTensor) -> Result<SimpleTensor> {
     // Validate shapes for matrix multiplication
     if a.shape.ndim() != 2 || b.shape.ndim() != 2 {
@@ -123,7 +257,25 @@ pub fn matmul(a: &SimpleTensor, b: &SimpleTensor) -> Result<SimpleTensor> {
         ));
     }
     
-    // Compute matrix multiplication
+    // Try BLAS first for maximum performance on macOS
+    if is_blas_available() {
+        if let Some(result) = matmul_blas(a, b) {
+            eprintln!("🚀 Using Accelerate BLAS for matrix multiplication ({}x{} @ {}x{})", m, k, k2, n);
+            return Ok(result);
+        } else {
+            eprintln!("⚠️ BLAS available but failed for shape ({}x{} @ {}x{})", m, k, k2, n);
+        }
+    } else {
+        eprintln!("⚠️ BLAS not available");
+    }
+    
+    // Check if SIMD is disabled
+    if !is_simd_enabled() {
+        // Use simple non-SIMD implementation
+        return matmul_simple(a, b);
+    }
+    
+    // Compute matrix multiplication (without pool optimization)
     let mut result_data = vec![0.0f32; m * n];
     
     // Use the optimized matmul from woolly-tensor
@@ -187,7 +339,62 @@ pub fn softmax(input: &SimpleTensor) -> Result<SimpleTensor> {
     tensor_from_slice(&result, input.shape.clone())
 }
 
-/// Apply layer normalization
+/// Apply layer normalization with memory pool
+pub fn layer_norm_with_pool(
+    input: &SimpleTensor,
+    weight: &SimpleTensor,
+    bias: Option<&SimpleTensor>,
+    eps: f32,
+    pool: &mut TensorMemoryPool,
+) -> Result<SimpleTensor> {
+    let weight_data = &weight.data;
+    let bias_data = bias.map(|b| &b.data);
+    
+    let shape = input.shape.clone();
+    let hidden_size = shape.as_slice()[shape.ndim() - 1];
+    let total_elements = input.data.len();
+    let num_tokens = total_elements / hidden_size;
+    
+    // Use buffer from pool
+    let mut result = pool.get_buffer(total_elements);
+    
+    for t in 0..num_tokens {
+        let start_idx = t * hidden_size;
+        let end_idx = start_idx + hidden_size;
+        let token_data = &input.data[start_idx..end_idx];
+        
+        // Compute mean
+        let mean = token_data.iter().sum::<f32>() / hidden_size as f32;
+        
+        // Compute variance
+        let variance = token_data.iter()
+            .map(|&x| (x - mean).powi(2))
+            .sum::<f32>() / hidden_size as f32;
+        
+        let std_dev = (variance + eps).sqrt();
+        
+        // Normalize and scale
+        for (i, &val) in token_data.iter().enumerate() {
+            let normalized = (val - mean) / std_dev;
+            let scaled = normalized * weight_data[i];
+            let final_val = if let Some(ref bias) = bias_data {
+                scaled + bias[i]
+            } else {
+                scaled
+            };
+            result[start_idx + i] = final_val;
+        }
+    }
+    
+    let tensor_result = tensor_from_slice(&result, shape)?;
+    
+    // Return buffer to pool
+    pool.return_buffer(result);
+    
+    Ok(tensor_result)
+}
+
+/// Apply layer normalization (fallback)
 pub fn layer_norm(
     input: &SimpleTensor,
     weight: &SimpleTensor,
@@ -298,6 +505,30 @@ pub fn silu(input: &SimpleTensor) -> Result<SimpleTensor> {
         .collect();
     
     tensor_from_slice(&result, input.shape.clone())
+}
+
+/// Apply SwiGLU activation function (SiLU(gate) * up)
+/// Takes gate and up projections and returns element-wise product
+pub fn swiglu(gate: &SimpleTensor, up: &SimpleTensor) -> Result<SimpleTensor> {
+    if gate.shape.as_slice() != up.shape.as_slice() {
+        return Err(CoreError::tensor(
+            "SWIGLU_SHAPE_MISMATCH",
+            "Gate and up tensors must have identical shapes",
+            "SwiGLU activation",
+            "Ensure gate and up projections have the same dimensions"
+        ));
+    }
+    
+    let result: Vec<f32> = gate.data.iter()
+        .zip(up.data.iter())
+        .map(|(&g, &u)| {
+            // SiLU(gate) * up
+            let silu_gate = g * (1.0 / (1.0 + (-g).exp()));
+            silu_gate * u
+        })
+        .collect();
+    
+    tensor_from_slice(&result, gate.shape.clone())
 }
 
 /// Apply GELU activation function

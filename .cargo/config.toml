@@ -1,0 +1,10 @@
+# Performance optimizations
+
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=apple-m1",
+]
+
+[env]
+OPENBLAS_STATIC = "1"
+OPENBLAS_NUM_THREADS = "1"

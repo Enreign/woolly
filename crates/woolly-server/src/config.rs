@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, path::PathBuf};
+use woolly_core::config::EngineConfig;
 
 /// Main server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +31,9 @@ pub struct ServerConfig {
     
     /// Request limits
     pub limits: RequestLimits,
+    
+    /// Engine configuration
+    pub engine: EngineConfig,
 }
 
 /// Authentication configuration
@@ -151,6 +155,10 @@ pub struct RequestLimits {
 
 impl Default for ServerConfig {
     fn default() -> Self {
+        // Create an engine config with larger context length for Granite model
+        let mut engine = EngineConfig::default();
+        engine.max_context_length = 131072; // Support Granite model's 131k context
+        
         Self {
             bind: "127.0.0.1:8080".parse().unwrap(),
             auth: AuthConfig::default(),
@@ -161,6 +169,7 @@ impl Default for ServerConfig {
             tls: None,
             models: ModelConfig::default(),
             limits: RequestLimits::default(),
+            engine,
         }
     }
 }
@@ -240,7 +249,7 @@ impl Default for RequestLimits {
         Self {
             max_body_size: 10 * 1024 * 1024, // 10MB
             request_timeout: 300, // 5 minutes
-            max_tokens: 4096,
+            max_tokens: 4096, // Default limit, can be increased per model
             max_concurrent_requests: 100,
         }
     }

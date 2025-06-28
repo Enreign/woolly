@@ -1,0 +1,32 @@
+# Woolly Server Configuration
+bind = "0.0.0.0:8080"
+
+[models]
+models_dir = "./models"
+default_model = "granite-3.3-8b-instruct-Q4_K_M.gguf"
+preload_models = ["granite-3.3-8b-instruct-Q4_K_M.gguf"]
+
+[performance]
+max_batch_size = 8
+max_context_length = 4096
+use_gpu = true
+gpu_layers = 32
+
+[mcp]
+enabled = true
+default_timeout = 30
+max_concurrent_tools = 5
+
+[auth]
+allow_anonymous = true
+jwt_secret = "change-me-in-production"
+jwt_expiration = 3600
+api_keys = []
+
+[rate_limit]
+requests_per_minute = 60
+burst_size = 10
+
+[logging]
+level = "info"
+format = "pretty"

@@ -1,6 +1,7 @@
 //! Feed-forward network implementations for transformer models
 
 use crate::{CoreError, Result};
+use rayon::prelude::*;
 
 /// Feed-forward network configuration
 #[derive(Debug, Clone)]
@@ -125,56 +126,56 @@ impl FeedForward {
         self.w2.forward(&intermediate)
     }
 
-    /// Apply activation function in-place
+    /// Apply activation function in-place with parallel processing
     fn apply_activation(&self, tensor: &mut [f32], activation: ActivationType) {
         match activation {
             ActivationType::ReLU => {
-                for x in tensor.iter_mut() {
+                tensor.par_iter_mut().for_each(|x| {
                     *x = x.max(0.0);
-                }
+                });
             }
             ActivationType::GELU => {
                 // GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/π) * (x + 0.044715 * x^3)))
                 const SQRT_2_OVER_PI: f32 = 0.797_884_56;
-                for x in tensor.iter_mut() {
+                tensor.par_iter_mut().for_each(|x| {
                     let x_val = *x;
                     let tanh_arg = SQRT_2_OVER_PI * (x_val + 0.044715 * x_val * x_val * x_val);
                     *x = 0.5 * x_val * (1.0 + tanh_arg.tanh());
-                }
+                });
             }
             ActivationType::SiLU => {
                 // SiLU(x) = x * sigmoid(x) = x / (1 + exp(-x))
-                for x in tensor.iter_mut() {
+                tensor.par_iter_mut().for_each(|x| {
                     *x = *x / (1.0 + (-*x).exp());
-                }
+                });
             }
             _ => {} // GeGLU and SwiGLU are handled separately
         }
     }
 
-    /// Apply gated linear unit
+    /// Apply gated linear unit with parallel processing
     fn apply_glu(&self, tensor: &mut [f32], gate: &[f32]) {
-        for (x, &g) in tensor.iter_mut().zip(gate.iter()) {
+        tensor.par_iter_mut().zip(gate.par_iter()).for_each(|(x, &g)| {
             *x *= g;
-        }
+        });
     }
 
-    /// Apply GeGLU (GELU-gated linear unit)
+    /// Apply GeGLU (GELU-gated linear unit) with parallel processing
     fn apply_geglu(&self, tensor: &mut [f32], gate: &[f32]) {
         const SQRT_2_OVER_PI: f32 = 0.797_884_56;
-        for (x, &g) in tensor.iter_mut().zip(gate.iter()) {
+        tensor.par_iter_mut().zip(gate.par_iter()).for_each(|(x, &g)| {
             let tanh_arg = SQRT_2_OVER_PI * (g + 0.044715 * g * g * g);
             let gelu_g = 0.5 * g * (1.0 + tanh_arg.tanh());
             *x *= gelu_g;
-        }
+        });
     }
 
-    /// Apply SwiGLU (Swish-gated linear unit)
+    /// Apply SwiGLU (Swish-gated linear unit) with parallel processing
     fn apply_swiglu(&self, tensor: &mut [f32], gate: &[f32]) {
-        for (x, &g) in tensor.iter_mut().zip(gate.iter()) {
+        tensor.par_iter_mut().zip(gate.par_iter()).for_each(|(x, &g)| {
             let swish_g = g / (1.0 + (-g).exp());
             *x *= swish_g;
-        }
+        });
     }
 
     /// Load weights for the feed-forward layer
@@ -191,8 +192,11 @@ impl FeedForward {
                 (&weights.ffn_gate_weight, &weights.ffn_gate_shape) {
                 w_gate.load_weights(gate_weights, gate_shape)?;
             } else {
-                return Err(CoreError::Model(
-                    "Gate weights expected but not found in loaded weights".to_string()
+                return Err(CoreError::model(
+                    "FFN_GATE_WEIGHTS_MISSING",
+                    "Gate weights expected but not found in loaded weights",
+                    "Feed-forward layer configured with GLU but gate weights are missing",
+                    "Ensure the model file contains gate weights for GLU variants"
                 ));
             }
         }
@@ -244,15 +248,18 @@ impl Linear {
     fn forward(&self, input: &[f32]) -> Result<Vec<f32>> {
         let batch_size = input.len() / self.in_features;
         if input.len() % self.in_features != 0 {
-            return Err(CoreError::InvalidInput(
-                "Input size must be divisible by in_features".to_string(),
+            return Err(CoreError::invalid_input(
+                "LINEAR_INPUT_SIZE_MISMATCH",
+                "Input size must be divisible by in_features",
+                &format!("Input length {} is not divisible by in_features {}", input.len(), self.in_features),
+                "Ensure the input tensor has the correct shape for matrix multiplication"
             ));
         }
 
         let mut output = vec![0.0; batch_size * self.out_features];
 
-        // Matrix multiplication: output = input @ weight.T + bias
-        for b in 0..batch_size {
+        // Parallel matrix multiplication: output = input @ weight.T + bias
+        output.par_chunks_mut(self.out_features).enumerate().for_each(|(b, batch_output)| {
             for o in 0..self.out_features {
                 let mut sum = 0.0;
                 for i in 0..self.in_features {
@@ -265,9 +272,9 @@ impl Linear {
                     sum += bias[o];
                 }
                 
-                output[b * self.out_features + o] = sum;
+                batch_output[o] = sum;
             }
-        }
+        });
 
         Ok(output)
     }
@@ -296,33 +303,45 @@ impl Linear {
     fn load_weights(&mut self, weights: &[f32], shape: &[usize]) -> Result<()> {
         // Validate shape
         if shape.len() != 2 {
-            return Err(CoreError::InvalidInput(format!(
-                "Expected 2D weight shape, got {}D", shape.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "LINEAR_WEIGHT_SHAPE_INVALID",
+                format!("Expected 2D weight shape, got {}D", shape.len()),
+                "Linear layer weights must be 2-dimensional matrices",
+                "Provide weights with shape [out_features, in_features]"
+            ));
         }
 
         let expected_out_features = shape[0];
         let expected_in_features = shape[1];
         
         if expected_out_features != self.out_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Output features mismatch: expected {}, got {}", 
-                self.out_features, expected_out_features
-            )));
+            return Err(CoreError::invalid_input(
+                "LINEAR_OUTPUT_FEATURES_MISMATCH",
+                format!("Output features mismatch: expected {}, got {}", 
+                    self.out_features, expected_out_features),
+                "The weight tensor's output dimension doesn't match the layer configuration",
+                "Ensure the weight tensor has the correct output features dimension"
+            ));
         }
         
         if expected_in_features != self.in_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Input features mismatch: expected {}, got {}", 
-                self.in_features, expected_in_features
-            )));
+            return Err(CoreError::invalid_input(
+                "LINEAR_INPUT_FEATURES_MISMATCH",
+                format!("Input features mismatch: expected {}, got {}", 
+                    self.in_features, expected_in_features),
+                "The weight tensor's input dimension doesn't match the layer configuration",
+                "Ensure the weight tensor has the correct input features dimension"
+            ));
         }
 
         if weights.len() != self.out_features * self.in_features {
-            return Err(CoreError::InvalidInput(format!(
-                "Weight size mismatch: expected {}, got {}", 
-                self.out_features * self.in_features, weights.len()
-            )));
+            return Err(CoreError::invalid_input(
+                "LINEAR_WEIGHT_SIZE_MISMATCH",
+                format!("Weight size mismatch: expected {}, got {}", 
+                    self.out_features * self.in_features, weights.len()),
+                "The total number of weight values doesn't match the expected size",
+                "Ensure the weight tensor contains the correct number of elements"
+            ));
         }
 
         // Copy weights

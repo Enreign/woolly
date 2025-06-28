@@ -1,0 +1,194 @@
+{
+  "timestamp": "2025-06-28T19:43:16.108Z",
+  "version": "1.0",
+  "entries": [
+    {
+      "id": "entry_mcglkm8h_wg76immf6",
+      "key": "woolly_current_performance",
+      "value": "Current: 0.13 tokens/sec (77s per token). Target: >15 tokens/sec. Gap: 115x slower. Main bottleneck: GGUF dequantization taking 90+ seconds per layer access. SIMD implementation broken and makes performance 5.3x worse.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:30.833Z",
+      "updatedAt": "2025-06-28T18:51:30.833Z",
+      "lastAccessedAt": "2025-06-28T18:51:30.833Z",
+      "version": 1,
+      "size": 249,
+      "compressed": false,
+      "checksum": "cbb53f709b742e28cc9ee9e6157f9383fba5723874eef61d6914eb12dd46dbfa",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcglko0x_p1dxk1mlc",
+      "key": "woolly_architecture",
+      "value": "Modular workspace with 7 crates. Key issues: Over-engineered with 6+ transformer variants, disabled MLX backend, mixed optimization levels. Strengths: Comprehensive SIMD support, advanced memory pooling, flexible eviction policies.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:33.153Z",
+      "updatedAt": "2025-06-28T18:51:33.153Z",
+      "lastAccessedAt": "2025-06-28T18:51:33.153Z",
+      "version": 1,
+      "size": 262,
+      "compressed": false,
+      "checksum": "f4bb10e5ac3f5edc580c4ca71e44237fe23143b40d0d5b3f0d4314e85b0e7910",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcglkpmt_hrwxpzojz",
+      "key": "woolly_vs_llama_cpp",
+      "value": "Llama.cpp advantages: Flash Attention, optimized micro-kernels, better cache utilization, direct quantized ops, hand-tuned assembly. Woolly missing: kernel fusion, specialized kernels, efficient memory layout.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:35.237Z",
+      "updatedAt": "2025-06-28T18:51:35.237Z",
+      "lastAccessedAt": "2025-06-28T18:51:35.237Z",
+      "version": 1,
+      "size": 240,
+      "compressed": false,
+      "checksum": "271c26e709dccba8311700575cc7592a8892874210b1b8018d07bf8ab1402d19",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcglkrbe_iy0q2wdwc",
+      "key": "woolly_optimization_opportunities",
+      "value": "From Rust ecosystem: JIT compilation (Burn), AWQ/GPTQ quantization, memory-mapped models (RTen), MLX backend for Apple Silicon, kernel fusion, buffer pooling. Priority: Fix GGUF loading, implement caching, fix SIMD overhead.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T18:51:37.418Z",
+      "updatedAt": "2025-06-28T18:51:37.418Z",
+      "lastAccessedAt": "2025-06-28T18:51:37.418Z",
+      "version": 1,
+      "size": 255,
+      "compressed": false,
+      "checksum": "1feede5092d8a7860c44658c387674b477f5524066fbe6eb3a4768964981fc7b",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcgmphzc_sxaq4sht8",
+      "key": "woolly_simd_test_results",
+      "value": "SIMD test complete: SIMD makes performance 1.87x worse. With SIMD: 68.9s/token, Without SIMD: 36.8s/token. Recommendation: Use WOOLLY_DISABLE_SIMD=1. Model loading works correctly with endpoint /api/v1/models/{model_name}/load",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T19:23:18.216Z",
+      "updatedAt": "2025-06-28T19:23:18.216Z",
+      "lastAccessedAt": "2025-06-28T19:23:18.216Z",
+      "version": 1,
+      "size": 257,
+      "compressed": false,
+      "checksum": "44c1533b9657390308dcdc51a7b4455c0552aab9b17cf2f76a995dd7b2b04d6b",
+      "references": [],
+      "dependencies": []
+    },
+    {
+      "id": "entry_mcgnf6a3_jvrhe1tap",
+      "key": "woolly_gguf_cache_status",
+      "value": "Implemented dequantization cache but still slow. Cache is being used (logs show '🚀 Using dequantization cache') but all accesses are cache misses even on second inference. First token: 169s, second token: 233s. Issue: LazyTensor cached_data may be cleared between inferences. Need to debug why cache isn't persisting.",
+      "type": "string",
+      "namespace": "default",
+      "tags": [],
+      "metadata": {},
+      "owner": "system",
+      "accessLevel": "shared",
+      "createdAt": "2025-06-28T19:43:16.107Z",
+      "updatedAt": "2025-06-28T19:43:16.107Z",
+      "lastAccessedAt": "2025-06-28T19:43:16.107Z",
+      "version": 1,
+      "size": 349,
+      "compressed": false,
+      "checksum": "1dc9431b9967508ec708cee74c9f318601990f2ca40278a408006df6beb90e1c",
+      "references": [],
+      "dependencies": []
+    }
+  ],
+  "statistics": {
+    "overview": {
+      "totalEntries": 6,
+      "totalSize": 1612,
+      "compressedEntries": 0,
+      "compressionRatio": 1,
+      "indexSize": 300,
+      "memoryUsage": 9479040,
+      "diskUsage": 0
+    },
+    "distribution": {
+      "byNamespace": {
+        "default": {
+          "count": 6,
+          "size": 1612
+        }
+      },
+      "byType": {
+        "string": {
+          "count": 6,
+          "size": 1612
+        }
+      },
+      "byOwner": {
+        "system": {
+          "count": 6,
+          "size": 1612
+        }
+      },
+      "byAccessLevel": {
+        "shared": {
+          "count": 6,
+          "size": 1612
+        }
+      }
+    },
+    "temporal": {
+      "entriesCreatedLast24h": 6,
+      "entriesUpdatedLast24h": 6,
+      "entriesAccessedLast24h": 6,
+      "oldestEntry": "2025-06-28T18:51:30.833Z",
+      "newestEntry": "2025-06-28T19:43:16.107Z"
+    },
+    "performance": {
+      "averageQueryTime": 0,
+      "averageWriteTime": 0,
+      "cacheHitRatio": 0,
+      "indexEfficiency": 0.95
+    },
+    "health": {
+      "expiredEntries": 0,
+      "orphanedReferences": 0,
+      "duplicateKeys": 0,
+      "corruptedEntries": 0,
+      "recommendedCleanup": false
+    },
+    "optimization": {
+      "suggestions": [],
+      "potentialSavings": {
+        "compression": 0,
+        "cleanup": 0,
+        "deduplication": 0
+      },
+      "indexOptimization": [
+        "Consider periodic index rebuilding for optimal performance"
+      ]
+    }
+  }
+}

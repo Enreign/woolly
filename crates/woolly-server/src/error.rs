@@ -340,7 +340,7 @@ impl ServerError {
                 "core_error",
                 "An error occurred in the core engine",
                 Some(json!({
-                    "error_code": code,
+                    "error_code": error_code,
                     "component": "core_engine"
                 }))
             ),
@@ -362,11 +362,11 @@ fn generate_request_id() -> String {
 impl From<woolly_core::CoreError> for ServerError {
     fn from(err: woolly_core::CoreError) -> Self {
         match err {
-            woolly_core::CoreError::InvalidInput(_) => {
+            woolly_core::CoreError::InvalidInput { .. } => {
                 ServerError::InvalidRequest(err.to_string())
             }
-            woolly_core::CoreError::Model(msg) if msg.contains("not found") => {
-                ServerError::ModelNotFound(msg)
+            woolly_core::CoreError::Model { message, .. } if message.contains("not found") => {
+                ServerError::ModelNotFound(message)
             }
             _ => ServerError::Core(err),
         }

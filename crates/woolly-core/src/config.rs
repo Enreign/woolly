@@ -206,10 +206,18 @@ pub struct OptimizationConfig {
     
     /// Graph optimization level (0-3)
     pub graph_optimization_level: u8,
+    
+    /// Whether to use SIMD operations (can be disabled via WOOLLY_DISABLE_SIMD env var)
+    pub use_simd: bool,
 }
 
 impl Default for OptimizationConfig {
     fn default() -> Self {
+        // Check environment variable for SIMD override
+        let use_simd = std::env::var("WOOLLY_DISABLE_SIMD")
+            .map(|v| v != "1" && v.to_lowercase() != "true")
+            .unwrap_or(true);
+            
         Self {
             use_flash_attention: true,
             use_torch_compile: false,
@@ -217,6 +225,7 @@ impl Default for OptimizationConfig {
             quantization: QuantizationConfig::default(),
             use_amp: false,
             graph_optimization_level: 2,
+            use_simd,
         }
     }
 }

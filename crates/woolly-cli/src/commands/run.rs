@@ -47,6 +47,10 @@ pub struct RunCommand {
     /// Dry run - only load and validate model
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Use fast FP32 initialization instead of loading GGUF (for performance testing)
+    #[arg(long)]
+    pub fast_fp32: bool,
 }
 
 #[async_trait]
@@ -58,23 +62,38 @@ impl Command for RunCommand {
         self.validate_arguments()
             .context("Command validation failed")?;
 
-        // Determine model path
-        let model_path = self.resolve_model_path(config)
-            .context("Model path resolution failed")?;
-        info!("Using model: {}", model_path.display());
+        let (model_info, load_time) = if self.fast_fp32 {
+            // Use fast FP32 mode
+            self.load_fast_fp32_model().await?
+        } else {
+            // Determine model path
+            let model_path = self.resolve_model_path(config)
+                .context("Model path resolution failed")?;
+            info!("Using model: {}", model_path.display());
 
-        // Load and validate model
-        let start_time = Instant::now();
-        let model_info = self.load_and_validate_model(&model_path).await?;
-        let load_time = start_time.elapsed();
+            // Load and validate model
+            let start_time = Instant::now();
+            let model_info = self.load_and_validate_model(&model_path).await?;
+            let load_time = start_time.elapsed();
+            (model_info, load_time)
+        };
 
         if json_output {
-            let output = json!({
-                "model_path": model_path.to_string_lossy(),
-                "model_info": model_info,
-                "load_time_ms": load_time.as_millis(),
-                "status": "loaded"
-            });
+            let output = if self.fast_fp32 {
+                json!({
+                    "model_type": "fast_fp32",
+                    "model_info": model_info,
+                    "load_time_ms": load_time.as_millis(),
+                    "status": "loaded"
+                })
+            } else {
+                json!({
+                    "model_path": self.resolve_model_path(config)?.to_string_lossy(),
+                    "model_info": model_info,
+                    "load_time_ms": load_time.as_millis(),
+                    "status": "loaded"
+                })
+            };
             print_output(&output, true)?;
         } else {
             print_success(&format!("Model loaded successfully in {}", format_duration(load_time)));
@@ -168,7 +187,16 @@ impl RunCommand {
                 "No operation specified. Choose one of:\n\
                 • Use --prompt 'text' for single inference\n\
                 • Use --interactive for interactive mode\n\
-                • Use --dry-run to only validate the model"
+                • Use --dry-run to only validate the model\n\
+                • Use --fast-fp32 for performance testing"
+            );
+        }
+
+        // Validate fast FP32 mode compatibility
+        if self.fast_fp32 && self.model.is_some() {
+            anyhow::bail!(
+                "Cannot use both --fast-fp32 and --model together\n\
+                Suggestion: Use --fast-fp32 for performance testing with generated weights, or --model for real model inference"
             );
         }
 
@@ -379,7 +407,7 @@ impl RunCommand {
                 anyhow::bail!("statvfs call failed");
             }
             
-            let available_bytes = statvfs.f_bavail * statvfs.f_frsize;
+            let available_bytes = statvfs.f_bavail as u64 * statvfs.f_frsize;
             Ok(available_bytes as f64 / (1024.0 * 1024.0)) // Convert to MB
         }
 
@@ -387,6 +415,45 @@ impl RunCommand {
         {
             anyhow::bail!("Disk space checking not implemented for this platform");
         }
+    }
+
+    /// Load fast FP32 model for performance testing
+    async fn load_fast_fp32_model(&self) -> Result<(serde_json::Value, std::time::Duration)> {
+        use woolly_core::InferenceEngine;
+        use woolly_core::config::EngineConfig;
+        
+        // Set up environment for fast FP32 mode
+        std::env::set_var("WOOLLY_FAST_FP32", "1");
+        
+        let spinner = create_spinner("Initializing fast FP32 model (bypassing GGUF)...");
+        let start_time = Instant::now();
+        
+        // Create engine and load fast FP32 model
+        let mut engine = InferenceEngine::new(EngineConfig::default());
+        engine.load_fast_fp32_model().await
+            .context("Failed to load fast FP32 model")?;
+        
+        let load_time = start_time.elapsed();
+        
+        // Get model info
+        let model_info = engine.model_info()
+            .context("Failed to get model info")?;
+        
+        let model_info_json = json!({
+            "format": "FastFP32",
+            "name": model_info.name,
+            "model_type": model_info.model_type,
+            "vocab_size": model_info.vocab_size,
+            "context_length": model_info.context_length,
+            "hidden_size": model_info.hidden_size,
+            "num_layers": model_info.num_layers,
+            "num_heads": model_info.num_heads,
+            "initialization_type": "random_weights",
+            "purpose": "performance_testing"
+        });
+        
+        spinner.finish_with_message(format!("Fast FP32 model initialized in {:.2}ms", load_time.as_millis()));
+        Ok((model_info_json, load_time))
     }
 
     /// Load and validate model, returning basic info
@@ -553,6 +620,7 @@ impl Default for RunCommand {
             temperature: 0.7,
             timing: false,
             dry_run: false,
+            fast_fp32: false,
         }
     }
 }

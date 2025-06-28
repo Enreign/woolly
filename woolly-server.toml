@@ -1,0 +1,88 @@
+bind = "127.0.0.1:3001"
+
+[auth]
+jwt_secret = "default-jwt-secret-change-in-production"
+jwt_expiration = 3600
+api_keys = ["demo-api-key"]
+allow_anonymous = true
+
+[rate_limit]
+authenticated_rpm = 60
+anonymous_rpm = 10
+burst_capacity = 10
+
+[mcp]
+enabled = true
+protocol_version = "0.1.0"
+
+[mcp.server_info]
+name = "Woolly MCP Server"
+version = "0.1.0"
+
+[cors]
+enabled = true
+allowed_origins = ["*"]
+allowed_methods = [
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE",
+    "OPTIONS",
+]
+allowed_headers = [
+    "Content-Type",
+    "Authorization",
+    "X-API-Key",
+]
+max_age = 3600
+
+[models]
+models_dir = "/Users/ssh/Documents/Code/ai-inference/woolly/models"
+max_sessions = 10
+preload_models = []
+
+[limits]
+max_body_size = 10485760
+request_timeout = 300
+max_tokens = 4096
+max_concurrent_requests = 100
+
+[engine]
+max_context_length = 131072
+max_batch_size = 16
+num_threads = 10
+
+[engine.device]
+device_type = "cpu"
+device_id = 0
+cpu_fallback = true
+
+[engine.memory]
+max_memory_mb = 8192
+use_mmap = true
+pin_memory = false
+allocator = "system"
+
+[engine.cache]
+max_cache_size_mb = 2048
+eviction_policy = "lru"
+persistent = false
+
+[engine.optimizations]
+use_flash_attention = true
+use_torch_compile = false
+operator_fusion = true
+use_amp = false
+graph_optimization_level = 2
+use_simd = true
+
+[engine.optimizations.quantization]
+enabled = false
+method = "none"
+weight_bits = 8
+
+[engine.logging]
+level = "info"
+log_to_file = false
+log_performance = false
+performance_interval_secs = 60

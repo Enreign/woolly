@@ -33,17 +33,17 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "chrono"] }
 
 # Config and path handling
-config = "0.14"
-dirs = "5.0"
+config = "0.15"
+dirs = "6.0"
 shellexpand = "3.1"
 toml = "0.8"
 
 # Terminal UI and formatting
-crossterm = "0.28"
+crossterm = "0.29"
 indicatif = "0.17"
 console = "0.15"
-colored = "2.1"
-tabled = "0.16"
+colored = "3.0"
+tabled = "0.20"
 
 # Async utilities
 futures = "0.3"
@@ -51,6 +51,7 @@ async-trait = { workspace = true }
 
 # File handling
 memmap2 = { workspace = true }
+libc = "0.2"
 
 [dev-dependencies]
 criterion = { workspace = true }

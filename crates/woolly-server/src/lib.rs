@@ -3,6 +3,9 @@
 //! This crate provides a web server that exposes Woolly's capabilities over HTTP and WebSocket
 //! connections with full Model Context Protocol (MCP) support.
 
+/// Version of the woolly-server crate
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod auth;
 pub mod config;
 pub mod error;
@@ -18,9 +21,6 @@ pub mod mcp;
 pub use config::ServerConfig;
 pub use error::{ServerError, ServerResult};
 pub use server::WoollyServer;
-
-/// Library version
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Prelude module for convenient imports
 pub mod prelude {
