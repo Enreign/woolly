@@ -45,10 +45,12 @@ impl LazyTransformer {
             
         let mut lazy_weights = LazyModelWeights::from_loader(gguf_loader, model_config.clone())?;
         
-        // Preload all weights to eliminate dequantization bottleneck during inference
+        // Smart preloading for 16GB systems - only preload critical weights
         if config.preload_weights {
-            eprintln!("🔄 Preloading all model weights to eliminate dequantization bottleneck...");
-            lazy_weights.preload_all_weights()?;
+            eprintln!("🔄 Smart preloading for 16GB system - caching critical weights...");
+            // For limited memory, just preload the most important weights
+            lazy_weights.preload_critical_tensors()?;
+            eprintln!("✅ Critical weights cached - remaining weights will use on-demand loading with LRU cache");
         } else {
             eprintln!("⚡ Lazy loading enabled - weights will be loaded on demand");
         }
@@ -1173,14 +1175,23 @@ impl Model for LazyTransformer {
                 )
             })?;
             
-            // Preload critical tensors
-            eprintln!("LazyTransformer: Preloading critical tensors...");
-            weights.preload_critical_tensors()?;
+            // Skip critical tensor preloading if all weights were already preloaded
+            if !self.config.preload_weights {
+                eprintln!("LazyTransformer: Preloading critical tensors...");
+                weights.preload_critical_tensors()?;
+            } else {
+                eprintln!("LazyTransformer: Skipping critical tensor preload (all weights already preloaded)");
+                // Verify cache is still populated
+                eprintln!("LazyTransformer: Verifying cache before inference...");
+                weights.verify_cache_persistence()?;
+            }
             
             // Get embeddings
             eprintln!("LazyTransformer: Loading embeddings...");
             let embeddings_shape = weights.get_tensor_shape("token_embd.weight")?;
+            eprintln!("LazyTransformer: Got embedding shape: {:?}", embeddings_shape);
             let embeddings_data = weights.get_tensor("token_embd.weight")?.to_vec();
+            eprintln!("LazyTransformer: Loaded embedding data, length: {}", embeddings_data.len());
             
             // GGUF stores embeddings as [hidden_size, vocab_size], but embedding_lookup expects [vocab_size, hidden_size]
             eprintln!("LazyTransformer: Embedding shape from GGUF: {:?}", embeddings_shape);
@@ -1199,18 +1210,24 @@ impl Model for LazyTransformer {
                     if embeddings_data.len() % hidden_size == 0 {
                         eprintln!("Inferring actual vocab size: {} (shape reports {})", actual_vocab_size, embeddings_shape[1]);
                         let corrected_shape = vec![hidden_size, actual_vocab_size];
+                        eprintln!("LazyTransformer: Creating tensor with corrected shape: {:?}", corrected_shape);
                         let embedding_tensor = tensor_from_slice(
                             &embeddings_data,
                             Shape::from_slice(&corrected_shape)
                         )?;
+                        eprintln!("LazyTransformer: Tensor created successfully");
                         
                         // Transpose to [vocab_size, hidden_size]
+                        eprintln!("LazyTransformer: Transposing tensor...");
                         let embedding_tensor_transposed = embedding_tensor.transpose(&[1, 0])?;
                         eprintln!("LazyTransformer: Transposed embedding shape: {:?}", embedding_tensor_transposed.shape());
                         
                         // Do embedding lookup
+                        eprintln!("LazyTransformer: Performing embedding lookup for {} tokens...", input_ids.len());
                         let hidden_states = embedding_lookup(input_ids, &embedding_tensor_transposed)?;
+                        eprintln!("LazyTransformer: Embedding lookup complete");
                         let hidden_vec = hidden_states.to_vec();
+                        eprintln!("LazyTransformer: Hidden states vector created, length: {}", hidden_vec.len());
                         
                         (hidden_vec, corrected_shape)
                     } else {

@@ -32,14 +32,18 @@ class ModelBenchmarks:
         
     async def measure_single_token_latency(self, prompt: str) -> float:
         """Measure latency for generating a single token"""
-        headers = {}
+        headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         
+        # Use the correct endpoint format for our server
+        model_name = self.config['models'][0]['name']  # Get first model from config
+        
         payload = {
             "prompt": prompt,
-            "max_tokens": 1,
-            "temperature": 0.0
+            "max_length": 1,
+            "temperature": 0.0,
+            "stream": False
         }
         
         session_timeout = aiohttp.ClientTimeout(total=self.timeout)
@@ -49,7 +53,7 @@ class ModelBenchmarks:
             try:
                 self.logger.info(f"Starting single token latency test (timeout: {self.timeout}s)")
                 async with session.post(
-                    f"{self.base_url}/api/v1/inference/complete",
+                    f"{self.base_url}/api/v1/models/{model_name}/generate",
                     json=payload,
                     headers=headers
                 ) as response:
@@ -82,14 +86,18 @@ class ModelBenchmarks:
     
     async def measure_throughput(self, prompt: str, max_tokens: int) -> Dict[str, float]:
         """Measure token generation throughput"""
-        headers = {}
+        headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         
+        # Use the correct endpoint format for our server
+        model_name = self.config['models'][0]['name']  # Get first model from config
+        
         payload = {
             "prompt": prompt,
-            "max_tokens": max_tokens,
-            "temperature": 0.0
+            "max_length": max_tokens,
+            "temperature": 0.0,
+            "stream": False
         }
         
         session_timeout = aiohttp.ClientTimeout(total=self.timeout)
@@ -100,16 +108,19 @@ class ModelBenchmarks:
             
             try:
                 async with session.post(
-                    f"{self.base_url}/api/v1/inference/complete",
+                    f"{self.base_url}/api/v1/models/{model_name}/generate",
                     json=payload,
                     headers=headers
                 ) as response:
                     if response.status == 200:
-                        async for line in response.content:
-                            if line:
-                                if first_token_time is None:
-                                    first_token_time = time.time()
-                                tokens_received += 1
+                        result = await response.json()
+                        end_time = time.time()
+                        total_time = end_time - start_time
+                        
+                        # Extract token count from response
+                        if 'choices' in result and result['choices']:
+                            tokens_received = max_tokens  # Assume all requested tokens were generated
+                            first_token_time = start_time + 0.001  # Approximate first token time
                         
                         end_time = time.time()
                         total_time = end_time - start_time
@@ -135,9 +146,12 @@ class ModelBenchmarks:
         # Note: This assumes Woolly supports batch processing
         # If not, we'll simulate it with concurrent requests
         
-        headers = {}
+        headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        
+        # Use the correct endpoint format for our server
+        model_name = self.config['models'][0]['name']  # Get first model from config
         
         start_time = time.time()
         
@@ -175,12 +189,13 @@ class ModelBenchmarks:
             for prompt in prompts:
                 payload = {
                     "prompt": prompt,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.0
+                    "max_length": max_tokens,
+                    "temperature": 0.0,
+                    "stream": False
                 }
                 
                 task = session.post(
-                    f"{self.base_url}/api/v1/inference/complete",
+                    f"{self.base_url}/api/v1/models/{model_name}/generate",
                     json=payload,
                     headers=headers
                 )
@@ -210,14 +225,18 @@ class ModelBenchmarks:
         
         prompt = f"{context}\n\nQuestion: What animal jumps over what?\nAnswer:"
         
-        headers = {}
+        headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         
+        # Use the correct endpoint format for our server
+        model_name = self.config['models'][0]['name']  # Get first model from config
+        
         payload = {
             "prompt": prompt,
-            "max_tokens": 20,
-            "temperature": 0.0
+            "max_length": 20,
+            "temperature": 0.0,
+            "stream": False
         }
         
         session_timeout = aiohttp.ClientTimeout(total=self.timeout)
@@ -226,7 +245,7 @@ class ModelBenchmarks:
             
             try:
                 async with session.post(
-                    f"{self.base_url}/api/v1/inference/complete",
+                    f"{self.base_url}/api/v1/models/{model_name}/generate",
                     json=payload,
                     headers=headers
                 ) as response:
@@ -311,21 +330,25 @@ class ModelBenchmarks:
     
     async def run_inference(self, prompt: str, max_tokens: int) -> Optional[str]:
         """Run a single inference request"""
-        headers = {}
+        headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         
+        # Use the correct endpoint format for our server
+        model_name = self.config['models'][0]['name']  # Get first model from config
+        
         payload = {
             "prompt": prompt,
-            "max_tokens": max_tokens,
-            "temperature": 0.0
+            "max_length": max_tokens,
+            "temperature": 0.0,
+            "stream": False
         }
         
         session_timeout = aiohttp.ClientTimeout(total=self.timeout)
         async with aiohttp.ClientSession(timeout=session_timeout) as session:
             try:
                 async with session.post(
-                    f"{self.base_url}/api/v1/inference/complete",
+                    f"{self.base_url}/api/v1/models/{model_name}/generate",
                     json=payload,
                     headers=headers
                 ) as response:

@@ -21,8 +21,13 @@
       "prompts": [
         "Hi"
       ],
-      "max_tokens": [1, 5],
-      "batch_sizes": [1]
+      "max_tokens": [
+        10,
+        50
+      ],
+      "batch_sizes": [
+        1
+      ]
     },
     "resource_utilization": {
       "enabled": true,
@@ -43,14 +48,24 @@
     },
     "load_testing": {
       "enabled": false,
-      "concurrent_users": [1],
+      "concurrent_users": [
+        1,
+        5
+      ],
       "duration": 30,
       "ramp_up_time": 5
     },
     "comparative": {
       "enabled": false,
-      "compare_with": ["llama.cpp", "ollama"],
-      "metrics": ["throughput", "latency", "memory"]
+      "compare_with": [
+        "llama.cpp",
+        "ollama"
+      ],
+      "metrics": [
+        "throughput",
+        "latency",
+        "memory"
+      ]
     },
     "reliability": {
       "enabled": false,

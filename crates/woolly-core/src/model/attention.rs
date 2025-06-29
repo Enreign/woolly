@@ -2,6 +2,8 @@
 
 use crate::{CoreError, Result};
 use crate::tensor_utils::{SimpleTensor, tensor_from_slice, matmul, add_tensors, softmax};
+use crate::blas_matmul::{matmul_blas, is_blas_available};
+use crate::blas_attention::{scaled_dot_product_attention_blas, grouped_query_attention_blas};
 use woolly_tensor::Shape;
 use std::f32;
 use rayon::prelude::*;
@@ -133,7 +135,7 @@ impl MultiHeadAttention {
         Ok((output, cache, attention_weights))
     }
 
-    /// Legacy forward pass through multi-head attention
+    /// BLAS-optimized forward pass through multi-head attention
     /// Input shape: [batch_size * seq_len, hidden_size] (flattened)
     /// Returns: (output, attention_weights)
     pub fn forward(
@@ -147,32 +149,47 @@ impl MultiHeadAttention {
         let hidden_size = self.config.hidden_size;
         let seq_len = total_elements / hidden_size;
 
-        // Project to Q, K, V using legacy linear layers
-        // TODO: Convert to proper tensor operations
-        let query_states = hidden_states.to_vec(); // Placeholder - should use actual linear projection
-        let key_states = hidden_states.to_vec(); // Placeholder
-        let value_states = hidden_states.to_vec(); // Placeholder
+        eprintln!("🚀 Using BLAS-optimized attention (seq_len={}, hidden_size={})", seq_len, hidden_size);
 
-        // Reshape for multi-head attention
-        let (query_states, key_states, value_states) = self.reshape_for_attention(
-            &query_states,
-            &key_states,
-            &value_states,
-            seq_len,
-        )?;
+        // Project to Q, K, V using BLAS-accelerated matrix multiplication
+        let query_states = self.project_queries(hidden_states, seq_len)?;
+        let key_states = self.project_keys(hidden_states, seq_len)?;
+        let value_states = self.project_values(hidden_states, seq_len)?;
 
-        // Apply attention
-        let (attention_output, attention_weights) = self.scaled_dot_product_attention(
-            &query_states,
-            &key_states,
-            &value_states,
-            attention_mask,
-            seq_len,
-        )?;
+        // Apply BLAS-optimized attention
+        let (attention_output, attention_weights) = if let Some(num_kv_heads) = self.config.num_kv_heads {
+            // Use Grouped Query Attention
+            eprintln!("🔄 Using Grouped Query Attention with {} KV heads", num_kv_heads);
+            let output = grouped_query_attention_blas(
+                &query_states,
+                &key_states,
+                &value_states,
+                seq_len,
+                seq_len, // total_seq_len = seq_len for now
+                self.config.num_heads,
+                num_kv_heads,
+                self.config.head_dim,
+                1.0 / (self.config.head_dim as f32).sqrt(),
+            )?;
+            (output, None) // GQA doesn't return attention weights for now
+        } else {
+            // Use standard multi-head attention
+            eprintln!("🔄 Using standard multi-head attention");
+            let output = scaled_dot_product_attention_blas(
+                &query_states,
+                &key_states,
+                &value_states,
+                seq_len,
+                seq_len, // total_seq_len = seq_len for now
+                self.config.num_heads,
+                self.config.head_dim,
+                1.0 / (self.config.head_dim as f32).sqrt(),
+            )?;
+            (output, None) // Standard doesn't return attention weights for now
+        };
 
-        // Reshape back and project output
-        let attention_output = self.reshape_from_attention(&attention_output, seq_len);
-        let output = attention_output; // Placeholder - should use actual linear projection
+        // Project output using BLAS
+        let output = self.project_output(&attention_output, seq_len)?;
 
         // Prepare cache if requested
         let cache = if use_cache {
@@ -446,6 +463,110 @@ impl MultiHeadAttention {
         }
 
         output
+    }
+
+    /// Project input to query states using BLAS
+    fn project_queries(&self, hidden_states: &[f32], seq_len: usize) -> Result<Vec<f32>> {
+        let hidden_size = self.config.hidden_size;
+        
+        if let Some(ref weight) = self.q_proj.weight {
+            let input_tensor = SimpleTensor {
+                data: hidden_states.to_vec(),
+                shape: Shape::matrix(seq_len, hidden_size),
+            };
+            
+            if is_blas_available() {
+                if let Some(result) = matmul_blas(&input_tensor, weight) {
+                    eprintln!("✅ Q projection completed with BLAS acceleration");
+                    return Ok(result.data);
+                }
+            }
+            
+            // Fallback to manual computation
+            eprintln!("⚠️  Falling back to manual Q projection");
+            let result = matmul(&input_tensor, weight)?;
+            Ok(result.data)
+        } else {
+            Err(CoreError::model("Q_PROJ_NOT_LOADED", "Q projection weights not loaded", "", ""))
+        }
+    }
+    
+    /// Project input to key states using BLAS
+    fn project_keys(&self, hidden_states: &[f32], seq_len: usize) -> Result<Vec<f32>> {
+        let hidden_size = self.config.hidden_size;
+        
+        if let Some(ref weight) = self.k_proj.weight {
+            let input_tensor = SimpleTensor {
+                data: hidden_states.to_vec(),
+                shape: Shape::matrix(seq_len, hidden_size),
+            };
+            
+            if is_blas_available() {
+                if let Some(result) = matmul_blas(&input_tensor, weight) {
+                    eprintln!("✅ K projection completed with BLAS acceleration");
+                    return Ok(result.data);
+                }
+            }
+            
+            // Fallback to manual computation
+            eprintln!("⚠️  Falling back to manual K projection");
+            let result = matmul(&input_tensor, weight)?;
+            Ok(result.data)
+        } else {
+            Err(CoreError::model("K_PROJ_NOT_LOADED", "K projection weights not loaded", "", ""))
+        }
+    }
+    
+    /// Project input to value states using BLAS
+    fn project_values(&self, hidden_states: &[f32], seq_len: usize) -> Result<Vec<f32>> {
+        let hidden_size = self.config.hidden_size;
+        
+        if let Some(ref weight) = self.v_proj.weight {
+            let input_tensor = SimpleTensor {
+                data: hidden_states.to_vec(),
+                shape: Shape::matrix(seq_len, hidden_size),
+            };
+            
+            if is_blas_available() {
+                if let Some(result) = matmul_blas(&input_tensor, weight) {
+                    eprintln!("✅ V projection completed with BLAS acceleration");
+                    return Ok(result.data);
+                }
+            }
+            
+            // Fallback to manual computation
+            eprintln!("⚠️  Falling back to manual V projection");
+            let result = matmul(&input_tensor, weight)?;
+            Ok(result.data)
+        } else {
+            Err(CoreError::model("V_PROJ_NOT_LOADED", "V projection weights not loaded", "", ""))
+        }
+    }
+    
+    /// Project attention output using BLAS
+    fn project_output(&self, attention_output: &[f32], seq_len: usize) -> Result<Vec<f32>> {
+        let hidden_size = self.config.hidden_size;
+        
+        if let Some(ref weight) = self.o_proj.weight {
+            let input_tensor = SimpleTensor {
+                data: attention_output.to_vec(),
+                shape: Shape::matrix(seq_len, hidden_size),
+            };
+            
+            if is_blas_available() {
+                if let Some(result) = matmul_blas(&input_tensor, weight) {
+                    eprintln!("✅ Output projection completed with BLAS acceleration");
+                    return Ok(result.data);
+                }
+            }
+            
+            // Fallback to manual computation
+            eprintln!("⚠️  Falling back to manual output projection");
+            let result = matmul(&input_tensor, weight)?;
+            Ok(result.data)
+        } else {
+            Err(CoreError::model("O_PROJ_NOT_LOADED", "Output projection weights not loaded", "", ""))
+        }
     }
 
     /// Load weights for the attention layer

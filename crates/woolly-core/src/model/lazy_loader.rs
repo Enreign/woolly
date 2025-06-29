@@ -293,14 +293,15 @@ impl LazyModelWeights {
         let loader = Arc::new(loader);
         let mut tensors = HashMap::new();
 
-        // CACHE ENABLED - Aggressive caching to fix dequantization bottleneck
-        // Initialize dequantization cache with large memory limit
+        // CACHE ENABLED - Smart caching for 16GB systems
+        // Use 8GB cache (50% of system RAM) to avoid swapping
+        // This will cache the most frequently used weights
         let cache_config = DequantizationCacheConfig {
-            max_memory_bytes: 4 * 1024 * 1024 * 1024, // 4GB cache - we need to cache all weights!
-            prefetch_ahead: 2, // Prefetch next layers
-            use_frequency_priority: true, // Prioritize frequently used weights
-            frequency_window: Duration::from_secs(300), // 5 minute window
-            enable_async_prefetch: false, // Keep disabled for now to avoid complexity
+            max_memory_bytes: 8 * 1024 * 1024 * 1024, // 8GB cache - safe for 16GB system
+            prefetch_ahead: 1, // Reduce prefetch to save memory
+            use_frequency_priority: true, // LRU eviction for hot weights
+            frequency_window: Duration::from_secs(60), // Shorter window
+            enable_async_prefetch: false, // Keep disabled for now
         };
         let dequant_cache = Arc::new(DequantizationCache::new(cache_config));
         
@@ -327,38 +328,20 @@ impl LazyModelWeights {
         })
     }
 
-    /// Get a tensor by name with caching
+    /// Get a tensor by name with caching - ALWAYS use dequantization cache for consistency
     pub fn get_tensor(&mut self, name: &str) -> Result<&[f32]> {
-        let start_time = Instant::now();
+        eprintln!("🔧 CRITICAL FIX: get_tensor() now redirects to get_tensor_cached() for cache consistency");
         
-        // Check if we have it in the dequantization cache first
-        if let Some(cached_data) = self.get_from_dequant_cache(name) {
-            // Record access for pattern analysis
-            let access_time = start_time.elapsed();
-            self.access_tracker.record_access(name, access_time);
-            
-            // Return reference to cached data - need to ensure lifetime is valid
-            // This is a bit tricky, so for now we'll store in tensor's cache too
-            let tensor = self.tensors.get_mut(name).unwrap();
-            tensor.cached_data = Some(cached_data);
-            return tensor.data();
-        }
+        // CRITICAL FIX: Always use the dequantization cache to ensure consistency
+        // Convert cached result to stored reference in LazyTensor
+        let cached_data = self.get_tensor_cached(name)?;
         
-        // Get tensor directly and use its individual caching
-        let tensor = self.tensors.get_mut(name)
-            .ok_or_else(|| CoreError::model(
-                "TENSOR_NOT_FOUND",
-                format!("Tensor '{}' not found", name),
-                "Getting tensor from lazy loader",
-                "Check tensor name"
-            ))?;
-            
-        // Record access for pattern analysis
-        let access_time = start_time.elapsed();
-        self.access_tracker.record_access(name, access_time);
+        // Store in tensor's individual cache for reference lifetime
+        let tensor = self.tensors.get_mut(name).unwrap();
+        tensor.cached_data = Some(cached_data);
         
-        // Use the LazyTensor's built-in caching (will dequantize if needed)
-        tensor.data()
+        // Return reference to cached data
+        Ok(tensor.cached_data.as_ref().unwrap())
     }
 
     /// Get tensor shape without loading data
@@ -393,20 +376,20 @@ impl LazyModelWeights {
     /// Preload critical tensors (embeddings, normalization)
     pub fn preload_critical_tensors(&mut self) -> Result<()> {
         // Preload embeddings
-        let _ = self.get_tensor("token_embd.weight")?;
+        let _ = self.get_tensor_cached("token_embd.weight")?;
         
         // Preload output norm
-        let _ = self.get_tensor("output_norm.weight")?;
+        let _ = self.get_tensor_cached("output_norm.weight")?;
         
         // Preload first and last layer norms for better startup performance
         if self.has_tensor("blk.0.attn_norm.weight") {
-            let _ = self.get_tensor("blk.0.attn_norm.weight")?;
+            let _ = self.get_tensor_cached("blk.0.attn_norm.weight")?;
         }
         
         let last_layer = self.config.num_layers - 1;
         let last_norm = format!("blk.{}.ffn_norm.weight", last_layer);
         if self.has_tensor(&last_norm) {
-            let _ = self.get_tensor(&last_norm)?;
+            let _ = self.get_tensor_cached(&last_norm)?;
         }
 
         Ok(())
@@ -431,7 +414,7 @@ impl LazyModelWeights {
             // Process tensors in parallel batches
             tensor_names.par_chunks(8).for_each(|chunk| {
                 for name in chunk {
-                    if let Err(e) = self.get_tensor(name) {
+                    if let Err(e) = self.get_tensor_cached(name) {
                         eprintln!("⚠️  Failed to preload tensor '{}': {}", name, e);
                     }
                 }
@@ -444,7 +427,7 @@ impl LazyModelWeights {
             eprintln!("🔄 Using sequential dequantization (enable 'parallel' feature for faster loading)");
             let mut loaded = 0;
             for name in &tensor_names {
-                if let Err(e) = self.get_tensor(name) {
+                if let Err(e) = self.get_tensor_cached(name) {
                     eprintln!("⚠️  Failed to preload tensor '{}': {}", name, e);
                 } else {
                     loaded += 1;
@@ -464,6 +447,9 @@ impl LazyModelWeights {
         eprintln!("💾 Memory usage: {} MB", cache_stats.total_bytes_cached / (1024 * 1024));
         eprintln!("📈 Cache stats - Hits: {}, Misses: {}, Hit rate: {:.1}%", 
             cache_stats.hits, cache_stats.misses, cache_stats.hit_rate() * 100.0);
+        
+        // Verify cache persistence
+        self.verify_cache_persistence()?;
         
         Ok(())
     }
@@ -570,13 +556,50 @@ impl LazyModelWeights {
     /// Try to get tensor from dequantization cache
     fn get_from_dequant_cache(&self, name: &str) -> Option<Vec<f32>> {
         // Check if tensor is in dequantization cache
-        // We'll implement a simple check here
-        None // For now, return None to use existing path while we implement full caching
+        self.dequant_cache.get(name)
+    }
+    
+    /// Verify cache persistence after preloading
+    pub fn verify_cache_persistence(&mut self) -> Result<()> {
+        eprintln!("🔍 Verifying cache persistence...");
+        
+        // Check a few critical tensors
+        let test_tensors = vec![
+            "token_embd.weight", 
+            "blk.0.attn_norm.weight",
+            "blk.0.attn_q.weight",
+            "output_norm.weight"
+        ];
+        
+        let mut found = 0;
+        let mut missing = 0;
+        
+        for tensor_name in &test_tensors {
+            if let Some(_cached_data) = self.dequant_cache.get(tensor_name) {
+                eprintln!("✅ Cache verified: {} is still cached", tensor_name);
+                found += 1;
+            } else {
+                eprintln!("❌ Cache lost: {} is NOT cached!", tensor_name);
+                missing += 1;
+            }
+        }
+        
+        let stats = self.cache_stats();
+        eprintln!("📊 Verification complete - Found: {}/{}, Cache stats - Hits: {}, Misses: {}", 
+            found, test_tensors.len(), stats.hits, stats.misses);
+        
+        if missing > 0 {
+            eprintln!("⚠️  WARNING: Some preloaded weights are missing from cache!");
+        }
+        
+        Ok(())
     }
     
     /// Get a tensor using the dequantization cache
     pub fn get_tensor_cached(&mut self, name: &str) -> Result<Vec<f32>> {
         let start_time = Instant::now();
+        
+        eprintln!("🔍 get_tensor_cached() called for '{}' - using SHARED dequantization cache", name);
         
         let tensor = self.tensors.get_mut(name)
             .ok_or_else(|| CoreError::model(
@@ -588,8 +611,11 @@ impl LazyModelWeights {
         
         // Use dequantization cache
         let dequant_cache = Arc::clone(&self.dequant_cache);
+        eprintln!("🔧 Using dequantization cache instance (strong_count: {})", Arc::strong_count(&dequant_cache));
+        
         let result = dequant_cache.get_or_dequantize(name, || {
             let dequant_start = Instant::now();
+            eprintln!("🚨 CACHE MISS detected in get_tensor_cached() for '{}' - this should not happen after preload!", name);
             
             // Load raw data
             let raw_data = tensor.loader.tensor_data(&tensor.name)

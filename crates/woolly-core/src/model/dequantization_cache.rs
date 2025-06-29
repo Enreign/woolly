@@ -96,6 +96,27 @@ impl DequantizationCache {
         }
     }
 
+    /// Get a tensor from cache without dequantizing (simple lookup)
+    pub fn get(&self, key: &str) -> Option<Vec<f32>> {
+        let cache = self.cache.read().unwrap();
+        if let Some(entry) = cache.get(key) {
+            // Update stats 
+            let mut stats = self.stats.write().unwrap();
+            stats.hits += 1;
+            stats.total_dequantization_time_saved += entry.dequantization_time;
+            eprintln!("📊 CACHE HIT for '{}' - Total hits: {}, Total misses: {}, Hit rate: {:.1}%", 
+                key, stats.hits, stats.misses, stats.hit_rate() * 100.0);
+            drop(stats);
+            
+            // Update LRU position
+            self.update_lru(key);
+            
+            Some(entry.data.clone())
+        } else {
+            None
+        }
+    }
+
     /// Get a dequantized tensor from cache or dequantize and cache it
     pub fn get_or_dequantize<F>(
         &self,
